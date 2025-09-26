@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.1.1-cudnn-runtime-ubuntu22.04
+FROM pytorch/pytorch:2.4.0-cuda12.1-cudnn8-runtime
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
@@ -6,11 +6,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 RUN apt-get update && apt-get install -y python3 python3-pip git && rm -rf /var/lib/apt/lists/*
 RUN pip3 install --upgrade pip
-
-# Torch CUDA 12.x + xformers
-RUN pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu121
-RUN pip3 install xformers==0.0.23.post1
-
+# Torch est déjà présent dans l'image de base. On ajoute seulement les libs nécessaires.
 # Diffusers + Transformers + auxiliaires
 RUN pip3 install diffusers==0.29.0 transformers==4.44.0 accelerate==0.33.0 safetensors==0.4.3 \
     pillow numpy boto3 requests runpod
