@@ -3,6 +3,7 @@ import runpod
 from PIL import Image
 import torch
 from diffusers import StableDiffusionPipeline, StableDiffusionXLPipeline
+from diffusers import DPMSolverMultistepScheduler
 
 pipeline = None
 
@@ -20,6 +21,11 @@ def init_pipeline():
                 model_id,
                 torch_dtype=torch.float16
             ).to("cuda")
+        # Scheduler plus qualitatif/stable que le défaut dans beaucoup de cas
+        try:
+            pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
+        except Exception:
+            pass
         pipeline.set_progress_bar_config(disable=True)
 
 def upload_presigned(png_bytes: bytes, presigned_put_url: str):
@@ -48,6 +54,7 @@ def handler(event):
     negative = data.get("negative_prompt","close-up, centered composition, distorted face, huge head, blurry, low quality")
     seed = int(data.get("seed", 42))
     steps = int(data.get("steps", 28))
+    guidance_scale = float(data.get("guidance_scale", 7.0))
     width = int(data.get("width", 1024))
     height = int(data.get("height", 768))
     s3_put = data.get("s3_presigned_put")
@@ -66,6 +73,7 @@ def handler(event):
             prompt=final_prompt,
             negative_prompt=negative,
             num_inference_steps=steps,
+            guidance_scale=guidance_scale,
             width=width, height=height,
             generator=gen
         ).images[0]
@@ -74,7 +82,7 @@ def handler(event):
             prompt=final_prompt,
             negative_prompt=negative,
             num_inference_steps=steps,
-            guidance_scale=7.5,
+            guidance_scale=guidance_scale,
             width=width, height=height,
             generator=gen
         ).images[0]
