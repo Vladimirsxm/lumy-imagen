@@ -2,17 +2,24 @@ import os, io, time, base64, requests
 import runpod
 from PIL import Image
 import torch
-from diffusers import StableDiffusionXLPipeline
+from diffusers import StableDiffusionPipeline, StableDiffusionXLPipeline
 
 pipeline = None
 
 def init_pipeline():
     global pipeline
     if pipeline is None:
-        pipeline = StableDiffusionXLPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0",
-            torch_dtype=torch.float16
-        ).to("cuda")
+        model_id = os.getenv("MODEL_ID", "stabilityai/stable-diffusion-2-1")
+        if "xl" in model_id.lower():
+            pipeline = StableDiffusionXLPipeline.from_pretrained(
+                model_id,
+                torch_dtype=torch.float16
+            ).to("cuda")
+        else:
+            pipeline = StableDiffusionPipeline.from_pretrained(
+                model_id,
+                torch_dtype=torch.float16
+            ).to("cuda")
         pipeline.set_progress_bar_config(disable=True)
 
 def upload_presigned(png_bytes: bytes, presigned_put_url: str):
@@ -54,13 +61,23 @@ def handler(event):
     init_pipeline()
     t0 = time.time()
     gen = torch.Generator(device="cuda").manual_seed(seed)
-    image = pipeline(
-        prompt=final_prompt,
-        negative_prompt=negative,
-        num_inference_steps=steps,
-        width=width, height=height,
-        generator=gen
-    ).images[0]
+    if isinstance(pipeline, StableDiffusionXLPipeline):
+        image = pipeline(
+            prompt=final_prompt,
+            negative_prompt=negative,
+            num_inference_steps=steps,
+            width=width, height=height,
+            generator=gen
+        ).images[0]
+    else:
+        image = pipeline(
+            prompt=final_prompt,
+            negative_prompt=negative,
+            num_inference_steps=steps,
+            guidance_scale=7.5,
+            width=width, height=height,
+            generator=gen
+        ).images[0]
 
     # Retour: soit base64, soit upload S3 si URL fournie
     result = {"status":"ok","job_id":job_id, "elapsed_s": round(time.time()-t0,3)}

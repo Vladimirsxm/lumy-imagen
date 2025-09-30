@@ -12,7 +12,8 @@ RUN pip3 install diffusers==0.29.0 transformers==4.44.0 accelerate==0.33.0 safet
     pillow numpy boto3 requests runpod
 
 # (Visage constant) Insightface/InstantID – branché plus tard
-RUN pip3 install insightface onnxruntime-gpu==1.18.0 controlnet-aux==0.0.8
+# (Visage constant) libs remises plus tard. On évite onnxruntime pour l’instant
+# RUN pip3 install insightface onnxruntime-gpu==1.18.0 controlnet-aux==0.0.8
 
 WORKDIR /app
 COPY src/ /app
