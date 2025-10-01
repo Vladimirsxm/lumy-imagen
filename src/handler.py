@@ -6,21 +6,27 @@ from diffusers import StableDiffusionPipeline, StableDiffusionXLPipeline
 from diffusers import DPMSolverMultistepScheduler
 
 pipeline = None
+CURRENT_MODEL_ID = None
+CURRENT_PIPELINE_KIND = None  # "sdxl" ou "sd"
 
 def init_pipeline():
-    global pipeline
+    global pipeline, CURRENT_MODEL_ID, CURRENT_PIPELINE_KIND
     if pipeline is None:
         model_id = os.getenv("MODEL_ID", "stabilityai/stable-diffusion-2-1")
+        CURRENT_MODEL_ID = model_id
         if "xl" in model_id.lower():
             pipeline = StableDiffusionXLPipeline.from_pretrained(
                 model_id,
                 torch_dtype=torch.float16
             ).to("cuda")
+            CURRENT_PIPELINE_KIND = "sdxl"
         else:
             pipeline = StableDiffusionPipeline.from_pretrained(
                 model_id,
                 torch_dtype=torch.float16
             ).to("cuda")
+            CURRENT_PIPELINE_KIND = "sd"
+        print(f"[handler] Loaded model: {CURRENT_MODEL_ID} (pipeline={CURRENT_PIPELINE_KIND})")
         # Scheduler plus qualitatif/stable que le défaut dans beaucoup de cas
         try:
             pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
@@ -88,7 +94,8 @@ def handler(event):
         ).images[0]
 
     # Retour: soit base64, soit upload S3 si URL fournie
-    result = {"status":"ok","job_id":job_id, "elapsed_s": round(time.time()-t0,3)}
+    result = {"status":"ok","job_id":job_id, "elapsed_s": round(time.time()-t0,3),
+              "model_id": CURRENT_MODEL_ID, "pipeline": CURRENT_PIPELINE_KIND}
     if return_base64 or not s3_put:
         b64, mime = image_to_base64(image, fmt=data.get("format","WEBP"), quality=int(data.get("quality",90)))
         result.update({"image_base64": b64, "mime": mime})
