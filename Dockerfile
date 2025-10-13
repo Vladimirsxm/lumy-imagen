@@ -13,6 +13,7 @@ RUN pip3 install diffusers==0.29.0 transformers==4.44.0 accelerate==0.33.0 safet
 
 # (Visage constant) FaceID avec InsightFace (GPU)
 RUN pip3 install onnxruntime-gpu==1.18.1 insightface==0.7.3 opencv-python-headless==4.9.0.80
+RUN pip3 install hf_transfer
 
 # Optional: accélérations PyTorch pour attention
 ENV PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128
