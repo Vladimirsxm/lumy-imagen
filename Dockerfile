@@ -11,9 +11,12 @@ RUN pip3 install --upgrade pip
 RUN pip3 install diffusers==0.29.0 transformers==4.44.0 accelerate==0.33.0 safetensors==0.4.3 \
     pillow numpy boto3 requests runpod
 
-# (Visage constant) Insightface/InstantID – branché plus tard
-# (Visage constant) libs remises plus tard. On évite onnxruntime pour l’instant
-# RUN pip3 install insightface onnxruntime-gpu==1.18.0 controlnet-aux==0.0.8
+# (Visage constant) FaceID avec InsightFace (GPU)
+RUN pip3 install onnxruntime-gpu==1.18.1 insightface==0.7.3 opencv-python-headless==4.9.0.80
+
+# Optional: accélérations PyTorch pour attention
+ENV PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128
+ENV HF_HUB_ENABLE_HF_TRANSFER=1
 
 WORKDIR /app
 COPY src/ /app
