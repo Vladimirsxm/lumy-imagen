@@ -232,6 +232,8 @@ def handler(event):
             print(f"[handler] FaceID fallback: {e}")
             image = None
 
+
+
     if image is None:
         # Génération standard
         if isinstance(pipeline, StableDiffusionXLPipeline):
