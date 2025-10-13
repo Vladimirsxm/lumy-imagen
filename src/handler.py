@@ -59,10 +59,7 @@ def init_pipeline():
             pipeline.enable_vae_tiling()
         except Exception:
             pass
-        try:
-            pipeline.enable_sequential_cpu_offload()
-        except Exception:
-            pass
+       
         # Scheduler plus qualitatif/stable que le défaut dans beaucoup de cas
         try:
             scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
@@ -154,10 +151,15 @@ def handler(event):
     width = int(data.get("width", 1024))
     height = int(data.get("height", 768))
     s3_put = data.get("s3_presigned_put")
-    reference_face_b64 = data.get("reference_face_base64")
-    ip_weight = float(data.get("ip_weight", 0.7))
+    reference_face_b64 = (
+    data.get("reference_face_base64")
+    or data.get("ip_adapter_face")
+    or data.get("ip_adapter_face_base64")
+    or data.get("faceid_image")
+    )
+    ip_weight = float(data.get("ip_weight", 1.0))
     use_refiner = bool(data.get("use_refiner", False))
-    refiner_fraction = float(data.get("refiner_fraction", 0.8))  # portion du denoising réalisée par la base
+    refiner_fraction = float(data.get("refiner_fraction", data.get("refiner_strength", 0.8))) # portion du denoising réalisée par la base
     out_format = data.get("format", "WEBP")
     out_quality = int(data.get("quality", 90))
     return_base64 = bool(data.get("return_base64", True))
@@ -223,6 +225,7 @@ def handler(event):
                 width=width,
                 height=height,
                 ip_adapter_scale=ip_weight,
+                generator=gen,
             )[0]
             used_faceid = True
         except Exception as e:
