@@ -27,16 +27,17 @@
     # 2) Diffusion stack
     RUN pip install diffusers==0.29.0 transformers==4.44.0 accelerate==0.33.0 safetensors==0.4.3
     
-    # 3) ONNX + ONNXRuntime **CPU** (évite les conflits GPU pour insightface)
-    RUN pip install onnx==1.16.0 onnxruntime==1.18.0
+    # 3) Torch CUDA 12.1 + ONNXRuntime CPU (combo éprouvé pour insightface)
+    RUN pip install --index-url https://download.pytorch.org/whl/cu121 torch==2.4.1 torchvision==0.19.1 torchaudio==2.4.1 \
+     && pip install onnx==1.16.0 onnxruntime==1.18.0
     
     # 4) OpenCV + DEPENDANCES BINAIRES AVANT insightface
     #    IMPORTANT: on force des wheels binaires pour éviter toute compile (SciPy/scikit-image).
     RUN pip install --only-binary=:all: opencv-python-headless==4.9.0.80 \
      && pip install --only-binary=:all: scipy==1.11.4 scikit-image==0.22.0
     
-    # 5) InsightFace (utilise ORT CPU) — 0.7.3 fonctionne avec les pins ci-dessus
-    RUN pip install insightface==0.7.3
+    # 5) InsightFace (wheels) — s'appuie sur torch cu121 épinglé
+    RUN pip install --extra-index-url https://download.pytorch.org/whl/cu121 insightface==0.7.1
     
     # Caches persistants
     RUN mkdir -p $HF_HOME $TRANSFORMERS_CACHE $INSIGHTFACE_HOME && chmod -R 777 $HF_HOME $INSIGHTFACE_HOME
