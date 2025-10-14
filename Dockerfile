@@ -9,34 +9,29 @@ ENV DEBIAN_FRONTEND=noninteractive \
     HF_HUB_ENABLE_HF_TRANSFER=1 \
     PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128
 
-# Outils de base
+# Outils
 RUN apt-get update && apt-get install -y git git-lfs && git lfs install && rm -rf /var/lib/apt/lists/*
 
-# pip à jour
-RUN python -m pip install --upgrade pip
+# pip/setuptools à jour
+RUN python -m pip install --upgrade pip setuptools wheel
 
-# --- Librairies Python (versions compatibles CUDA 12.1) ---
-RUN pip install \
-    diffusers==0.29.0 \
-    transformers==4.44.0 \
-    accelerate==0.33.0 \
-    safetensors==0.4.3 \
-    pillow>=10.0.0 \
-    numpy \
-    boto3 \
-    requests \
-    runpod \
-    huggingface_hub>=0.23 \
-    insightface==0.7.3 \
-    onnx==1.16.0 \
-    onnxruntime-gpu==1.18.1 \
-    opencv-python-headless==4.10.0.84 \
-    hf_transfer
+# 1) Base libs
+RUN pip install "pillow>=10.0.0" numpy requests boto3 runpod hf_transfer "huggingface_hub>=0.23"
+
+# 2) Diffusers/Transformers/Accelerate/Safetensors
+RUN pip install diffusers==0.29.0 transformers==4.44.0 accelerate==0.33.0 safetensors==0.4.3
+
+# 3) ONNX + ONNXRUNTIME GPU (versions compatibles CUDA 12.1)
+#    NOTE: 1.18.0 est plus sûr que 1.18.1 sur certaines images CUDA 12.1
+RUN pip install onnx==1.16.0 onnxruntime-gpu==1.18.0
+
+# 4) OpenCV + InsightFace
+RUN pip install opencv-python-headless==4.9.0.80 insightface==0.7.3
 
 # Caches persistants
 RUN mkdir -p $HF_HOME $TRANSFORMERS_CACHE $INSIGHTFACE_HOME && chmod -R 777 $HF_HOME $INSIGHTFACE_HOME
 
-# --- Pré-téléchargement des modèles pour éviter les re-downloads au démarrage ---
+# --- Pré-téléchargement des modèles ---
 RUN python - <<'PY'
 from huggingface_hub import snapshot_download
 import os
@@ -54,19 +49,14 @@ snapshot_download(
     allow_patterns=["ip-adapter-faceid-plusv2_sdxl.bin"]
 )
 
-# InsightFace: téléchargement des modèles (CPU au build, GPU au runtime)
+# InsightFace: télécharge les modèles au build (CPU ici)
 from insightface.app import FaceAnalysis
 app = FaceAnalysis(name="buffalo_l")
-app.prepare(ctx_id=-1)  # CPU ici pour éviter la dépendance au GPU pendant le build
+app.prepare(ctx_id=-1)
 print("Prewarm InsightFace done")
 PY
 
 WORKDIR /app
 COPY src/ /app
-
-# (Optionnel mais propre) re-déclarer les env utiles au runtime
-ENV HF_HOME=/opt/hf_cache
-ENV TRANSFORMERS_CACHE=/opt/hf_cache/transformers
-ENV INSIGHTFACE_HOME=/opt/insightface
 
 CMD ["python", "-u", "/app/handler.py"]
