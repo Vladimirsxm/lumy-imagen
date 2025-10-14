@@ -38,41 +38,24 @@
     RUN pip install cython scikit-build-core einops \
      && pip install --no-build-isolation insightface==0.7.0
     
-    # Télécharger les modèles InsightFace depuis HuggingFace au lieu de l'URL officielle
+    # Télécharger les modèles InsightFace depuis un repo HF connu
     RUN python - <<'PY'
 import os
-from huggingface_hub import hf_hub_download
+from huggingface_hub import snapshot_download
 insightface_home = os.environ.get("INSIGHTFACE_HOME", "/opt/insightface")
-os.makedirs(insightface_home, exist_ok=True)
-os.makedirs(f"{insightface_home}/models", exist_ok=True)
+models_dir = f"{insightface_home}/models"
+os.makedirs(models_dir, exist_ok=True)
 
-# Télécharger buffalo_l depuis HF
+# Télécharger antelopev2 depuis DIAMONIK7777/antelopev2
 try:
-    model_path = hf_hub_download(
-        repo_id="public-data/insightface",
-        filename="models/buffalo_l.zip",
-        cache_dir=insightface_home
+    snapshot_download(
+        repo_id="DIAMONIK7777/antelopev2",
+        local_dir=f"{models_dir}/antelopev2",
+        local_dir_use_symlinks=False
     )
-    # Décompresser
-    import zipfile
-    with zipfile.ZipFile(model_path, 'r') as zip_ref:
-        zip_ref.extractall(f"{insightface_home}/models/buffalo_l")
-    print("buffalo_l downloaded from HuggingFace")
+    print("antelopev2 downloaded from HuggingFace")
 except Exception as e:
-    print(f"buffalo_l download failed: {e}")
-    # Fallback: essayer antelopev2
-    try:
-        model_path = hf_hub_download(
-            repo_id="public-data/insightface",
-            filename="models/antelopev2.zip",
-            cache_dir=insightface_home
-        )
-        import zipfile
-        with zipfile.ZipFile(model_path, 'r') as zip_ref:
-            zip_ref.extractall(f"{insightface_home}/models/antelopev2")
-        print("antelopev2 downloaded from HuggingFace")
-    except Exception as e2:
-        print(f"antelopev2 download also failed: {e2}")
+    print(f"antelopev2 download failed: {e}")
 PY
     
     # 6) IP-Adapter (FaceID Plus XL) — via ZIP (pas de git)
