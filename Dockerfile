@@ -12,9 +12,10 @@
         HF_HUB_ENABLE_HF_TRANSFER=1 \
         PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128
     
-    # Outils + runtime OpenCV minimum
+    # Outils + runtime OpenCV minimum + toolchain pour build de wheels si nécessaire
     RUN apt-get update && apt-get install -y \
         git git-lfs ffmpeg libgl1 libglib2.0-0 \
+        build-essential cmake ninja-build python3-dev libopenblas-dev liblapack-dev \
      && git lfs install \
      && rm -rf /var/lib/apt/lists/*
     
@@ -34,8 +35,9 @@
     # 4) OpenCV + dépendances binaires (wheels uniquement)
     RUN pip install --only-binary=:all: opencv-python-headless==4.9.0.80 scipy==1.11.4 scikit-image==0.22.0
     
-    # 5) InsightFace (wheels) — Option A
-    RUN pip install --extra-index-url https://download.pytorch.org/whl/cu121 --prefer-binary insightface==0.7.0
+    # 5) InsightFace — Option B: autoriser compilation locale si pas de wheel
+    RUN pip install cython scikit-build-core \
+     && pip install --no-build-isolation insightface==0.7.0
     
     # Caches persistants
     RUN mkdir -p $HF_HOME $TRANSFORMERS_CACHE $INSIGHTFACE_HOME && chmod -R 777 $HF_HOME $INSIGHTFACE_HOME
