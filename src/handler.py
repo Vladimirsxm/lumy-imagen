@@ -292,16 +292,29 @@ def handler(event):
             if faceid_embeds is None:
                 # IPAdapterFaceID n'a pas de méthode get_face_embeds/get_face_embed
                 # Il faut extraire les embeddings manuellement avec InsightFace
+                from insightface.app import FaceAnalysis
+                import numpy as np
+                
+                # Essayer buffalo_l, puis antelopev2 en fallback
+                app = None
+                for model_name in ["buffalo_l", "antelopev2"]:
+                    try:
+                        app = FaceAnalysis(name=model_name, providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
+                        app.prepare(ctx_id=0, det_size=(640, 640))
+                        debug["insightface_model"] = model_name
+                        break
+                    except Exception as e_model:
+                        debug[f"insightface_{model_name}_error"] = str(e_model)
+                        continue
+                
+                if app is None:
+                    raise RuntimeError("Failed to load any InsightFace model (buffalo_l, antelopev2)")
+                
+                # Convertir PIL en numpy array
+                ref_img_np = np.array(ref_img)
+                
+                # Extraire le visage
                 try:
-                    from insightface.app import FaceAnalysis
-                    app = FaceAnalysis(name="buffalo_l", providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
-                    app.prepare(ctx_id=0, det_size=(640, 640))
-                    
-                    # Convertir PIL en numpy array
-                    import numpy as np
-                    ref_img_np = np.array(ref_img)
-                    
-                    # Extraire le visage
                     faces = app.get(ref_img_np)
                     if len(faces) == 0:
                         raise ValueError("No face detected in reference image")

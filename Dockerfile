@@ -38,6 +38,24 @@
     RUN pip install cython scikit-build-core einops \
      && pip install --no-build-isolation insightface==0.7.0
     
+    # Pré-télécharger les modèles InsightFace pour éviter l'échec au runtime
+    RUN python - <<'PY'
+import os
+from insightface.app import FaceAnalysis
+try:
+    app = FaceAnalysis(name="buffalo_l", providers=['CPUExecutionProvider'])
+    app.prepare(ctx_id=-1, det_size=(640, 640))
+    print("buffalo_l model downloaded successfully")
+except Exception as e:
+    print(f"buffalo_l download failed: {e}, will use antelopev2 as fallback")
+    try:
+        app = FaceAnalysis(name="antelopev2", providers=['CPUExecutionProvider'])
+        app.prepare(ctx_id=-1, det_size=(640, 640))
+        print("antelopev2 model downloaded successfully")
+    except Exception as e2:
+        print(f"antelopev2 download also failed: {e2}")
+PY
+    
     # 6) IP-Adapter (FaceID Plus XL) — via ZIP (pas de git)
     RUN pip install --no-cache-dir ip-adapter
     
