@@ -63,10 +63,12 @@ def init_pipeline():
         # Scheduler plus qualitatif/stable que le défaut dans beaucoup de cas
         try:
             scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
-            # Karras améliore souvent la stabilité/contraste
-            if hasattr(scheduler, "use_karras_sigmas"):
-                scheduler.use_karras_sigmas = True
-            pipeline.scheduler = scheduler
+# accès via .config pour éviter le warning
+try:
+    scheduler.config.use_karras_sigmas = True
+except Exception:
+    pass
+pipeline.scheduler = scheduler
         except Exception:
             pass
         pipeline.set_progress_bar_config(disable=True)
@@ -156,8 +158,14 @@ def handler(event):
     or data.get("ip_adapter_face")
     or data.get("ip_adapter_face_base64")
     or data.get("faceid_image")
-    )
-    ip_weight = float(data.get("ip_weight", 1.0))
+)
+# normalise la chaîne (évite les espaces/retours qui font échouer le décodage)
+if isinstance(reference_face_b64, str):
+    reference_face_b64 = reference_face_b64.strip()
+
+# borne le poids IP-Adapter (évite valeurs trop fortes qui dégradent la compo)
+ip_weight = float(data.get("ip_weight", 1.0))
+ip_weight = max(0.0, min(1.2, ip_weight))
     use_refiner = bool(data.get("use_refiner", False))
     refiner_fraction = float(data.get("refiner_fraction", data.get("refiner_strength", 0.8))) # portion du denoising réalisée par la base
     out_format = data.get("format", "WEBP")
@@ -180,8 +188,16 @@ def handler(event):
     used_refiner = False
     image = None
     # S'assurer des dimensions multiples de 64
-    width = max(64, (width // 64) * 64)
-    height = max(64, (height // 64) * 64)
+    # SDXL tolère des multiples de 8 (plus souple, moins de recadrages involontaires)
+    width = max(64, (width // 8) * 8)
+    height = max(64, (height // 8) * 8)
+
+    # --- DEBUG pour diagnostiquer FaceID
+debug = {
+    "has_ref_image": bool(reference_face_b64),
+    "has_ipadapter_class": IPAdapterFaceIDPlusXL is not None,
+    "pipeline_kind": CURRENT_PIPELINE_KIND,
+}
     if (
         isinstance(pipeline, StableDiffusionXLPipeline)
         and reference_face_b64
@@ -204,6 +220,7 @@ def handler(event):
                     torch_dtype=torch.float16,
                     device="cuda",
                     weight_name="ip-adapter-faceid-plusv2_sdxl.bin",
+                    print("[handler] IP-Adapter FaceID loaded.")
                 )
 
             # Extraire/cacher l'embedding visage
@@ -231,6 +248,7 @@ def handler(event):
         except Exception as e:
             print(f"[handler] FaceID fallback: {e}")
             image = None
+            debug["faceid_error"] = str(e)
 
 
 
@@ -300,7 +318,7 @@ def handler(event):
     result = {"status":"ok","job_id":job_id, "elapsed_s": round(time.time()-t0,3),
               "model_id": CURRENT_MODEL_ID, "pipeline": CURRENT_PIPELINE_KIND,
               "used_faceid": used_faceid, "used_refiner": used_refiner,
-              "ip_weight": ip_weight}
+              "ip_weight": ip_weight, "debug": debug}
     if return_base64 or not s3_put:
         b64, mime = image_to_base64(image, fmt=out_format, quality=out_quality)
         result.update({"image_base64": b64, "mime": mime})
