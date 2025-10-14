@@ -12,8 +12,8 @@
         HF_HUB_ENABLE_HF_TRANSFER=1 \
         PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128
     
-    # Outils de base
-    RUN apt-get update && apt-get install -y git git-lfs && git lfs install && rm -rf /var/lib/apt/lists/*
+    # Outils de base + libs runtime OpenCV
+    RUN apt-get update && apt-get install -y git git-lfs ffmpeg libgl1 libglib2.0-0 && git lfs install && rm -rf /var/lib/apt/lists/*
     
     # pip à jour
     RUN python -m pip install --upgrade pip setuptools wheel
@@ -63,8 +63,8 @@
     
     WORKDIR /app
     
-    # Copie TOUT le repo (plus sûr que COPY src/)
-    COPY . /app
+    # Copie uniquement le code handler (dans src/)
+    COPY src/ /app
     
     # Si ton handler est à la racine du repo et s'appelle handler.py, rien à faire.
     # Si tu l'as dans un sous-dossier (ex: src/handler.py), assure-toi que COPY ci-dessus l'amène bien dans /app.
