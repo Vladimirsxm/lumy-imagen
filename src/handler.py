@@ -18,40 +18,56 @@ try:
 except Exception:
     AutoencoderKL = None  # type: ignore
 
-# -------- IP-Adapter FaceID XL (multi-chemins) --------
-IPAdapterFaceIDPlusXL = None
+# -------- IP-Adapter FaceID (multi-chemins et multi-classes) --------
+IPAdapterFaceClass = None  # type: ignore
 _ipadapter_import_src = "none"
+_ipadapter_class_name = "none"
 
 try:
-    # paquet officiel GitHub (pip install git+https://github.com/h94/IP-Adapter.git)
-    from ip_adapter.ip_adapter_faceid import IPAdapterFaceIDPlusXL  # type: ignore
+    from ip_adapter.ip_adapter_faceid import IPAdapterFaceIDPlusXL as _FaceClass  # type: ignore
+    IPAdapterFaceClass = _FaceClass
     _ipadapter_import_src = "ip_adapter.ip_adapter_faceid"
+    _ipadapter_class_name = "IPAdapterFaceIDPlusXL"
 except Exception as e1:
     try:
-        from ip_adapter import IPAdapterFaceIDPlusXL  # type: ignore
-        _ipadapter_import_src = "ip_adapter"
+        from ip_adapter.ip_adapter_faceid import IPAdapterFaceIDPlus as _FaceClass  # type: ignore
+        IPAdapterFaceClass = _FaceClass
+        _ipadapter_import_src = "ip_adapter.ip_adapter_faceid"
+        _ipadapter_class_name = "IPAdapterFaceIDPlus"
     except Exception as e2:
         try:
-            from diffusers.pipelines.ip_adapter import IPAdapterFaceIDPlusXL  # type: ignore
-            _ipadapter_import_src = "diffusers.pipelines.ip_adapter"
+            from ip_adapter.ip_adapter_faceid import IPAdapterFaceID as _FaceClass  # type: ignore
+            IPAdapterFaceClass = _FaceClass
+            _ipadapter_import_src = "ip_adapter.ip_adapter_faceid"
+            _ipadapter_class_name = "IPAdapterFaceID"
         except Exception as e3:
             try:
-                from diffusers import IPAdapterFaceIDPlusXL  # type: ignore
-                _ipadapter_import_src = "diffusers"
+                from diffusers.pipelines.ip_adapter import IPAdapterFaceIDPlusXL as _FaceClass  # type: ignore
+                IPAdapterFaceClass = _FaceClass
+                _ipadapter_import_src = "diffusers.pipelines.ip_adapter"
+                _ipadapter_class_name = "IPAdapterFaceIDPlusXL"
             except Exception as e4:
-                IPAdapterFaceIDPlusXL = None
-                print("[handler] IPAdapterFaceIDPlusXL import failed:",
-                      repr(e1), repr(e2), repr(e3), repr(e4))
+                try:
+                    from diffusers import IPAdapterFaceIDPlusXL as _FaceClass  # type: ignore
+                    IPAdapterFaceClass = _FaceClass
+                    _ipadapter_import_src = "diffusers"
+                    _ipadapter_class_name = "IPAdapterFaceIDPlusXL"
+                except Exception as e5:
+                    IPAdapterFaceClass = None
+                    print("[handler] IP-Adapter import failed:",
+                          repr(e1), repr(e2), repr(e3), repr(e4), repr(e5))
 
 # diag versions
 try:
     import diffusers as _df; _df_ver = getattr(_df, "__version__", "?")
-except Exception: _df_ver = "?"
+except Exception:
+    _df_ver = "?"
 try:
     import ip_adapter as _ipa  # type: ignore
     _ipa_ver = getattr(_ipa, "__version__", "imported")
-except Exception: _ipa_ver = "not-imported"
-print(f"[diag] diffusers={_df_ver}, ip-adapter={_ipa_ver}, ipadapter_import_src={_ipadapter_import_src}")
+except Exception:
+    _ipa_ver = "not-imported"
+print(f"[diag] diffusers={_df_ver}, ip-adapter={_ipa_ver}, ipadapter_import_src={_ipadapter_import_src}, class={_ipadapter_class_name}")
 
 # -------- Variables globales --------
 pipeline = None
@@ -220,17 +236,18 @@ def handler(event):
 
     debug = {
         "has_ref_image": bool(reference_face_b64),
-        "has_ipadapter_class": IPAdapterFaceIDPlusXL is not None,
+        "has_ipadapter_class": IPAdapterFaceClass is not None,
         "pipeline_kind": CURRENT_PIPELINE_KIND,
         "diffusers": _df_ver,
         "ip-adapter": _ipa_ver,
         "ipadapter_import_src": _ipadapter_import_src,
+        "ipadapter_class": _ipadapter_class_name,
     }
 
     if (
         isinstance(pipeline, StableDiffusionXLPipeline)
         and reference_face_b64
-        and IPAdapterFaceIDPlusXL is not None
+        and IPAdapterFaceClass is not None
     ):
         try:
             from PIL import Image as _PILImage
@@ -242,13 +259,28 @@ def handler(event):
 
             global IP_FACEID_ADAPTER
             if IP_FACEID_ADAPTER is None:
-                IP_FACEID_ADAPTER = IPAdapterFaceIDPlusXL(
-                    pipeline,
-                    "h94/IP-Adapter-FaceID",
-                    torch_dtype=torch.float16,
-                    device="cuda",
-                    weight_name="ip-adapter-faceid-plusv2_sdxl.bin",
-                )
+                weight_name = os.getenv("IPADAPTER_WEIGHT", "ip-adapter-faceid-plusv2_sdxl.bin")
+                try:
+                    IP_FACEID_ADAPTER = IPAdapterFaceClass(
+                        pipeline,
+                        "h94/IP-Adapter-FaceID",
+                        torch_dtype=torch.float16,
+                        device="cuda",
+                        weight_name=weight_name,
+                    )
+                except Exception as e_init:
+                    # tentative fallback sur un poids plus générique
+                    try:
+                        IP_FACEID_ADAPTER = IPAdapterFaceClass(
+                            pipeline,
+                            "h94/IP-Adapter-FaceID",
+                            torch_dtype=torch.float16,
+                            device="cuda",
+                            weight_name="ip-adapter-faceid_sdxl.bin",
+                        )
+                        debug["ipadapter_weight_fallback"] = "ip-adapter-faceid_sdxl.bin"
+                    except Exception as e_init2:
+                        raise e_init2
 
             cache_key = _hash_b64_image(ref_str)
             faceid_embeds = FACE_EMBED_CACHE.get(cache_key)
