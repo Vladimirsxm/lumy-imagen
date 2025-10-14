@@ -290,10 +290,29 @@ def handler(event):
             cache_key = _hash_b64_image(ref_str)
             faceid_embeds = FACE_EMBED_CACHE.get(cache_key)
             if faceid_embeds is None:
+                # IPAdapterFaceID n'a pas de méthode get_face_embeds/get_face_embed
+                # Il faut extraire les embeddings manuellement avec InsightFace
                 try:
-                    faceid_embeds = IP_FACEID_ADAPTER.get_face_embeds(ref_img)
-                except Exception:
-                    faceid_embeds = IP_FACEID_ADAPTER.get_face_embed(ref_img)  # type: ignore
+                    from insightface.app import FaceAnalysis
+                    app = FaceAnalysis(name="buffalo_l", providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
+                    app.prepare(ctx_id=0, det_size=(640, 640))
+                    
+                    # Convertir PIL en numpy array
+                    import numpy as np
+                    ref_img_np = np.array(ref_img)
+                    
+                    # Extraire le visage
+                    faces = app.get(ref_img_np)
+                    if len(faces) == 0:
+                        raise ValueError("No face detected in reference image")
+                    
+                    # Prendre le premier visage (ou le plus grand)
+                    faceid_embeds = torch.from_numpy(faces[0].normed_embedding).unsqueeze(0)
+                    debug["faces_detected"] = len(faces)
+                except Exception as e_face:
+                    debug["face_extraction_error"] = str(e_face)
+                    raise e_face
+                
                 FACE_EMBED_CACHE[cache_key] = faceid_embeds
 
             # Appel generate avec compatibilité multi-signatures
