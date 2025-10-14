@@ -1,28 +1,34 @@
 import os
-# Fixe les caches AVANT de charger diffusers / insightface
+
+# Fixer les caches AVANT d'importer les lib lourdes
 os.environ.setdefault("HF_HOME", "/opt/hf_cache")
 os.environ.setdefault("TRANSFORMERS_CACHE", "/opt/hf_cache/transformers")
 os.environ.setdefault("INSIGHTFACE_HOME", "/opt/insightface")
-import os, io, time, base64, requests, hashlib
-import runpod
+
+import io
+import time
+import base64
+import hashlib
+import requests
 from PIL import Image
 import torch
-from diffusers import StableDiffusionPipeline, StableDiffusionXLPipeline
-from diffusers import DPMSolverMultistepScheduler
+import runpod
+from diffusers import StableDiffusionPipeline, StableDiffusionXLPipeline, DPMSolverMultistepScheduler
+
 try:
     from diffusers import StableDiffusionXLRefinerPipeline  # type: ignore
 except Exception:
     StableDiffusionXLRefinerPipeline = None  # type: ignore
+
 try:
     from diffusers import AutoencoderKL  # type: ignore
 except Exception:
     AutoencoderKL = None  # type: ignore
+
 try:
-    # Disponible avec diffusers >= 0.29
     from diffusers import IPAdapterFaceIDPlusXL  # type: ignore
 except Exception:
     IPAdapterFaceIDPlusXL = None  # type: ignore
-
 
 
 pipeline = None
@@ -30,58 +36,54 @@ refiner_pipeline = None
 CURRENT_MODEL_ID = None
 CURRENT_REFINER_ID = None
 CURRENT_PIPELINE_KIND = None  # "sdxl" ou "sd"
-IP_FACEID_ADAPTER = None  # chargé à la demande
-FACE_EMBED_CACHE = {}  # cache simple en mémoire clé -> embeddings
+IP_FACEID_ADAPTER = None
+FACE_EMBED_CACHE: dict[str, object] = {}
 
-def init_pipeline():
+
+def init_pipeline() -> None:
     global pipeline, CURRENT_MODEL_ID, CURRENT_PIPELINE_KIND
-    if pipeline is None:
-        # Par défaut, bascule sur SDXL base 1.0
-        model_id = os.getenv("MODEL_ID", "stabilityai/stable-diffusion-xl-base-1.0")
-        CURRENT_MODEL_ID = model_id
-        if "xl" in model_id.lower():
-            pipeline = StableDiffusionXLPipeline.from_pretrained(
-                model_id,
-                torch_dtype=torch.float16
-            ).to("cuda")
-            CURRENT_PIPELINE_KIND = "sdxl"
-        else:
-            pipeline = StableDiffusionPipeline.from_pretrained(
-                model_id,
-                torch_dtype=torch.float16
-            ).to("cuda")
-            CURRENT_PIPELINE_KIND = "sd"
-        print(f"[handler] Loaded model: {CURRENT_MODEL_ID} (pipeline={CURRENT_PIPELINE_KIND})")
-        # VAE optimisé (notamment pour SDXL)
-        try:
-            vae_id = os.getenv("VAE_ID", "madebyollin/sdxl-vae-fp16-fix")
-            if AutoencoderKL is not None and CURRENT_PIPELINE_KIND == "sdxl" and vae_id:
-                vae = AutoencoderKL.from_pretrained(vae_id, torch_dtype=torch.float16)
-                pipeline.vae = vae.to("cuda")
-                print(f"[handler] Loaded VAE: {vae_id}")
-        except Exception as e:
-            print(f"[handler] VAE load skipped: {e}")
-        # Optimisations mémoire/perf
-        try:
-            pipeline.enable_vae_tiling()
-        except Exception:
-            pass
-       
-        # Scheduler plus qualitatif/stable que le défaut dans beaucoup de cas
-        try:
-            scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
-# accès via .config pour éviter le warning
-try:
-    scheduler.config.use_karras_sigmas = True
-except Exception:
-    pass
-pipeline.scheduler = scheduler
-        except Exception:
-            pass
-        pipeline.set_progress_bar_config(disable=True)
+    if pipeline is not None:
+        return
+
+    model_id = os.getenv("MODEL_ID", "stabilityai/stable-diffusion-xl-base-1.0")
+    CURRENT_MODEL_ID = model_id
+
+    if "xl" in model_id.lower():
+        pipeline_local = StableDiffusionXLPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
+        CURRENT_PIPELINE_KIND = "sdxl"
+    else:
+        pipeline_local = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
+        CURRENT_PIPELINE_KIND = "sd"
+
+    # VAE optimisé
+    try:
+        vae_id = os.getenv("VAE_ID", "madebyollin/sdxl-vae-fp16-fix")
+        if AutoencoderKL is not None and CURRENT_PIPELINE_KIND == "sdxl" and vae_id:
+            vae = AutoencoderKL.from_pretrained(vae_id, torch_dtype=torch.float16)
+            pipeline_local.vae = vae.to("cuda")
+    except Exception as e:
+        print(f"[handler] VAE load skipped: {e}")
+
+    # Optimisations / Scheduler
+    try:
+        pipeline_local.enable_vae_tiling()
+    except Exception:
+        pass
+
+    try:
+        scheduler = DPMSolverMultistepScheduler.from_config(pipeline_local.scheduler.config)
+        if hasattr(scheduler, "use_karras_sigmas"):
+            scheduler.use_karras_sigmas = True
+        pipeline_local.scheduler = scheduler
+    except Exception:
+        pass
+
+    pipeline_local.set_progress_bar_config(disable=True)
+    pipeline = pipeline_local
+    print(f"[handler] Loaded model: {CURRENT_MODEL_ID} (pipeline={CURRENT_PIPELINE_KIND})")
 
 
-def init_refiner_if_needed():
+def init_refiner_if_needed() -> None:
     global refiner_pipeline, CURRENT_REFINER_ID
     if refiner_pipeline is not None:
         return
@@ -89,52 +91,48 @@ def init_refiner_if_needed():
     if not refiner_id or StableDiffusionXLRefinerPipeline is None:
         return
     try:
-        refiner_pipeline = StableDiffusionXLRefinerPipeline.from_pretrained(
-            refiner_id, torch_dtype=torch.float16
-        ).to("cuda")
-        # VAE idem que base si disponible
+        rp = StableDiffusionXLRefinerPipeline.from_pretrained(refiner_id, torch_dtype=torch.float16).to("cuda")
         try:
             vae_id = os.getenv("VAE_ID", "madebyollin/sdxl-vae-fp16-fix")
             if AutoencoderKL is not None and vae_id:
                 vae = AutoencoderKL.from_pretrained(vae_id, torch_dtype=torch.float16)
-                refiner_pipeline.vae = vae.to("cuda")
+                rp.vae = vae.to("cuda")
         except Exception:
             pass
         try:
-            refiner_pipeline.enable_vae_tiling()
+            rp.enable_vae_tiling()
         except Exception:
             pass
         try:
-            sched = DPMSolverMultistepScheduler.from_config(refiner_pipeline.scheduler.config)
+            sched = DPMSolverMultistepScheduler.from_config(rp.scheduler.config)
             if hasattr(sched, "use_karras_sigmas"):
                 sched.use_karras_sigmas = True
-            refiner_pipeline.scheduler = sched
+            rp.scheduler = sched
         except Exception:
             pass
-        refiner_pipeline.set_progress_bar_config(disable=True)
+        rp.set_progress_bar_config(disable=True)
+        refiner_pipeline = rp
         CURRENT_REFINER_ID = refiner_id
         print(f"[handler] Loaded refiner: {CURRENT_REFINER_ID}")
     except Exception as e:
         print(f"[handler] Refiner load failed: {e}")
 
-def upload_presigned(png_bytes: bytes, presigned_put_url: str):
-    r = requests.put(presigned_put_url, data=png_bytes, headers={'Content-Type':'image/png'}, timeout=60)
+
+def upload_presigned(png_bytes: bytes, presigned_put_url: str) -> str:
+    r = requests.put(presigned_put_url, data=png_bytes, headers={"Content-Type": "image/png"}, timeout=60)
     r.raise_for_status()
-    return presigned_put_url.split('?',1)[0]
- 
+    return presigned_put_url.split("?", 1)[0]
+
+
 def image_to_base64(img: Image.Image, fmt: str = "WEBP", quality: int = 90) -> tuple[str, str]:
-    """Encode une image en base64 (WEBP par défaut pour réduire la taille).
-    Retourne (b64, mime).
-    """
     bio = io.BytesIO()
-    fmt = fmt.upper()
-    mime = 'image/webp' if fmt == 'WEBP' else 'image/png'
-    if fmt == 'WEBP':
-        img.save(bio, format='WEBP', quality=quality)
+    fmt_up = fmt.upper()
+    mime = "image/webp" if fmt_up == "WEBP" else "image/png"
+    if fmt_up == "WEBP":
+        img.save(bio, format="WEBP", quality=quality)
     else:
-        img.save(bio, format='PNG')
-    b64 = base64.b64encode(bio.getvalue()).decode('ascii')
-    return b64, mime
+        img.save(bio, format="PNG")
+    return base64.b64encode(bio.getvalue()).decode("ascii"), mime
 
 
 def _hash_b64_image(b64_str: str) -> str:
@@ -144,15 +142,16 @@ def _hash_b64_image(b64_str: str) -> str:
         raw = base64.b64decode(b64_str)
         return hashlib.sha1(raw).hexdigest()
     except Exception:
-        return hashlib.sha1(b64_str.encode('utf-8')).hexdigest()
+        return hashlib.sha1(b64_str.encode("utf-8")).hexdigest()
+
 
 def handler(event):
     data = event.get("input", event)
-    prompt = data.get("prompt","children's book illustration, soft colors")
-    scene = data.get("scene","wide forest at dusk, fireflies, rich readable background")
+    prompt = data.get("prompt", "children's book illustration, soft colors")
+    scene = data.get("scene", "wide forest at dusk, fireflies, rich readable background")
     negative = data.get(
         "negative_prompt",
-        "worst quality, lowres, jpeg artifacts, text, watermark, deformed, extra limbs, close-up, centered, portrait, nsfw"
+        "worst quality, lowres, jpeg artifacts, text, watermark, deformed, extra limbs, close-up, centered, portrait, nsfw",
     )
     seed = int(data.get("seed", 42))
     steps = int(data.get("steps", 30))
@@ -161,26 +160,23 @@ def handler(event):
     height = int(data.get("height", 768))
     s3_put = data.get("s3_presigned_put")
     reference_face_b64 = (
-    data.get("reference_face_base64")
-    or data.get("ip_adapter_face")
-    or data.get("ip_adapter_face_base64")
-    or data.get("faceid_image")
-)
-# normalise la chaîne (évite les espaces/retours qui font échouer le décodage)
-if isinstance(reference_face_b64, str):
-    reference_face_b64 = reference_face_b64.strip()
+        data.get("reference_face_base64")
+        or data.get("ip_adapter_face")
+        or data.get("ip_adapter_face_base64")
+        or data.get("faceid_image")
+    )
+    if isinstance(reference_face_b64, str):
+        reference_face_b64 = reference_face_b64.strip()
 
-# borne le poids IP-Adapter (évite valeurs trop fortes qui dégradent la compo)
-ip_weight = float(data.get("ip_weight", 1.0))
-ip_weight = max(0.0, min(1.2, ip_weight))
+    ip_weight = float(data.get("ip_weight", 0.8))
+    ip_weight = max(0.0, min(1.2, ip_weight))
     use_refiner = bool(data.get("use_refiner", False))
-    refiner_fraction = float(data.get("refiner_fraction", data.get("refiner_strength", 0.8))) # portion du denoising réalisée par la base
+    refiner_fraction = float(data.get("refiner_fraction", data.get("refiner_strength", 0.8)))
     out_format = data.get("format", "WEBP")
     out_quality = int(data.get("quality", 90))
     return_base64 = bool(data.get("return_base64", True))
     job_id = data.get("job_id", f"job_{int(time.time())}")
 
-    # Composition et style par défaut pensés pour histoires pour enfants
     comp_txt = (
         "rule of thirds, medium-wide shot, subject on left or right third, full or 3/4 body,"
         " not centered, not close-up, background detailed but readable"
@@ -194,44 +190,41 @@ ip_weight = max(0.0, min(1.2, ip_weight))
     used_faceid = False
     used_refiner = False
     image = None
-    # S'assurer des dimensions multiples de 64
-    # SDXL tolère des multiples de 8 (plus souple, moins de recadrages involontaires)
+
+    # SDXL tolère les multiples de 8
     width = max(64, (width // 8) * 8)
     height = max(64, (height // 8) * 8)
 
-    # --- DEBUG pour diagnostiquer FaceID
-debug = {
-    "has_ref_image": bool(reference_face_b64),
-    "has_ipadapter_class": IPAdapterFaceIDPlusXL is not None,
-    "pipeline_kind": CURRENT_PIPELINE_KIND,
-}
+    debug = {
+        "has_ref_image": bool(reference_face_b64),
+        "has_ipadapter_class": IPAdapterFaceIDPlusXL is not None,
+        "pipeline_kind": CURRENT_PIPELINE_KIND,
+    }
+
     if (
         isinstance(pipeline, StableDiffusionXLPipeline)
         and reference_face_b64
         and IPAdapterFaceIDPlusXL is not None
     ):
         try:
-            import numpy as np  # insightface attend souvent du numpy
             from PIL import Image as _PILImage
-            # Décoder l'image de référence
-            if reference_face_b64.startswith("data:"):
-                reference_face_b64 = reference_face_b64.split(",", 1)[1]
-            ref_img = _PILImage.open(io.BytesIO(base64.b64decode(reference_face_b64))).convert("RGB")
+
+            ref_str = reference_face_b64
+            if ref_str.startswith("data:"):
+                ref_str = ref_str.split(",", 1)[1]
+            ref_img = _PILImage.open(io.BytesIO(base64.b64decode(ref_str))).convert("RGB")
 
             global IP_FACEID_ADAPTER
             if IP_FACEID_ADAPTER is None:
-                # Télécharge/charge le modèle FaceID Plus v2 pour SDXL
                 IP_FACEID_ADAPTER = IPAdapterFaceIDPlusXL(
                     pipeline,
                     "h94/IP-Adapter-FaceID",
                     torch_dtype=torch.float16,
                     device="cuda",
                     weight_name="ip-adapter-faceid-plusv2_sdxl.bin",
-                    print("[handler] IP-Adapter FaceID loaded.")
                 )
 
-            # Extraire/cacher l'embedding visage
-            cache_key = _hash_b64_image(reference_face_b64)
+            cache_key = _hash_b64_image(ref_str)
             faceid_embeds = FACE_EMBED_CACHE.get(cache_key)
             if faceid_embeds is None:
                 try:
@@ -257,16 +250,11 @@ debug = {
             image = None
             debug["faceid_error"] = str(e)
 
-
-
     if image is None:
-        # Génération standard
         if isinstance(pipeline, StableDiffusionXLPipeline):
-            # Si refiner demandé et disponible et pas FaceID (plus simple/robuste)
             if use_refiner and StableDiffusionXLRefinerPipeline is not None and not used_faceid:
                 init_refiner_if_needed()
                 if refiner_pipeline is not None:
-                    # Étape 1: base jusqu'à une fraction (ex: 0.8) en latents
                     base_out = pipeline(
                         prompt=final_prompt,
                         negative_prompt=negative,
@@ -279,7 +267,6 @@ debug = {
                         generator=gen,
                     )
                     latents = base_out.latents
-                    # Étape 2: refiner à partir de la même fraction
                     image = refiner_pipeline(
                         prompt=final_prompt,
                         negative_prompt=negative,
@@ -321,21 +308,27 @@ debug = {
                 generator=gen,
             ).images[0]
 
-    # Retour: soit base64, soit upload S3 si URL fournie
-    result = {"status":"ok","job_id":job_id, "elapsed_s": round(time.time()-t0,3),
-              "model_id": CURRENT_MODEL_ID, "pipeline": CURRENT_PIPELINE_KIND,
-              "used_faceid": used_faceid, "used_refiner": used_refiner,
-              "ip_weight": ip_weight, "debug": debug}
+    result = {
+        "status": "ok",
+        "job_id": job_id,
+        "elapsed_s": round(time.time() - t0, 3),
+        "model_id": CURRENT_MODEL_ID,
+        "pipeline": CURRENT_PIPELINE_KIND,
+        "used_faceid": used_faceid,
+        "used_refiner": used_refiner,
+        "ip_weight": ip_weight,
+        "debug": debug,
+    }
+
     if return_base64 or not s3_put:
         b64, mime = image_to_base64(image, fmt=out_format, quality=out_quality)
         result.update({"image_base64": b64, "mime": mime})
     if s3_put:
         png_buf = io.BytesIO()
-        image.save(png_buf, format='PNG')
+        image.save(png_buf, format="PNG")
         out_url = upload_presigned(png_buf.getvalue(), s3_put)
         result.update({"s3_url": out_url})
     return result
 
+
 runpod.serverless.start({"handler": handler})
-
-
