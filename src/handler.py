@@ -1,3 +1,8 @@
+import os
+# Fixe les caches AVANT de charger diffusers / insightface
+os.environ.setdefault("HF_HOME", "/opt/hf_cache")
+os.environ.setdefault("TRANSFORMERS_CACHE", "/opt/hf_cache/transformers")
+os.environ.setdefault("INSIGHTFACE_HOME", "/opt/insightface")
 import os, io, time, base64, requests, hashlib
 import runpod
 from PIL import Image
