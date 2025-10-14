@@ -35,7 +35,7 @@
     RUN pip install --only-binary=:all: opencv-python-headless==4.9.0.80 scipy==1.11.4 scikit-image==0.22.0
     
     # 5) InsightFace (sans build isolation pour éviter des surprises)
-    RUN pip install cython scikit-build-core \
+    RUN pip install cython scikit-build-core einops \
      && pip install --no-build-isolation insightface==0.7.0
     
     # 6) IP-Adapter (FaceID Plus XL) — via PyPI
