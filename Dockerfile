@@ -34,40 +34,12 @@
     # Caches persistants
     RUN mkdir -p $HF_HOME $TRANSFORMERS_CACHE $INSIGHTFACE_HOME && chmod -R 777 $HF_HOME $INSIGHTFACE_HOME
     
-    # --- Pré-téléchargement (best-effort : n'échoue JAMAIS le build) ---
-    RUN python - <<'PY'
-    import os, sys
-    from contextlib import suppress
-    ok = True
-    
-    # Hugging Face snapshots
-    with suppress(Exception):
-        from huggingface_hub import snapshot_download
-        cache = os.getenv("HF_HOME")
-        snapshot_download("stabilityai/stable-diffusion-xl-base-1.0", cache_dir=cache)
-        snapshot_download("stabilityai/stable-diffusion-xl-refiner-1.0", cache_dir=cache)
-        snapshot_download("madebyollin/sdxl-vae-fp16-fix", cache_dir=cache)
-        snapshot_download("h94/IP-Adapter-FaceID", cache_dir=cache,
-                          allow_patterns=["ip-adapter-faceid-plusv2_sdxl.bin"])
-        print("HF prewarm ok")
-    
-    # InsightFace models (CPU au build)
-    with suppress(Exception):
-        from insightface.app import FaceAnalysis
-        app = FaceAnalysis(name="buffalo_l")
-        app.prepare(ctx_id=-1)
-        print("InsightFace prewarm ok")
-    
-    # Toujours sortir 0 (best-effort)
-    sys.exit(0)
-    PY
+    # (Optionnel) pré-téléchargement supprimé pour éviter les erreurs heredoc
     
     WORKDIR /app
     
     # Copie uniquement le code handler (dans src/)
-    COPY . /app
-
-    RUN ls -alh /app | sed -n '1,200p'
+    COPY src/ /app
     
     # Si ton handler est à la racine du repo et s'appelle handler.py, rien à faire.
     # Si tu l'as dans un sous-dossier (ex: src/handler.py), assure-toi que COPY ci-dessus l'amène bien dans /app.
