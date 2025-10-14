@@ -259,35 +259,33 @@ def handler(event):
 
             global IP_FACEID_ADAPTER
             if IP_FACEID_ADAPTER is None:
-                ip_ckpt = "h94/IP-Adapter-FaceID"
-                init_attempts = []
+                # Télécharger le checkpoint IP-Adapter FaceID
+                from huggingface_hub import hf_hub_download
                 
-                # Tentatives d'initialisation avec différentes signatures
-                # Signature 1: sd_pipe comme premier arg positionnel
-                init_attempts.append({"call": lambda: IPAdapterFaceClass(pipeline, ip_ckpt, "cuda"), "variant": "sd_pipe_pos_3args"})
-                # Signature 2: sd_pipe et ip_ckpt seulement
-                init_attempts.append({"call": lambda: IPAdapterFaceClass(pipeline, ip_ckpt), "variant": "sd_pipe_pos_2args"})
-                # Signature 3: juste sd_pipe
-                init_attempts.append({"call": lambda: IPAdapterFaceClass(pipeline), "variant": "sd_pipe_pos_1arg"})
+                ip_ckpt_repo = "h94/IP-Adapter-FaceID"
+                weight_name = os.getenv("IPADAPTER_WEIGHT", "ip-adapter-faceid_sdxl.bin")
                 
-                last_error = None
-                for attempt in init_attempts:
+                try:
+                    # Télécharger le poids depuis HF
+                    ip_ckpt_path = hf_hub_download(repo_id=ip_ckpt_repo, filename=weight_name)
+                    debug["ipadapter_weight_downloaded"] = weight_name
+                except Exception as e_download:
+                    # Fallback sur un autre poids si le premier échoue
                     try:
-                        IP_FACEID_ADAPTER = attempt["call"]()  # type: ignore
-                        debug["ipadapter_init_variant"] = attempt["variant"]
-                        break
-                    except (TypeError, AttributeError, ValueError) as e:
-                        last_error = e
-                        debug[f"init_attempt_{attempt['variant']}"] = str(e)
-                        continue
-                    except Exception as e:
-                        last_error = e
-                        debug[f"init_attempt_{attempt['variant']}"] = str(e)
-                        continue
+                        weight_name = "ip-adapter-faceid-plusv2_sdxl.bin"
+                        ip_ckpt_path = hf_hub_download(repo_id=ip_ckpt_repo, filename=weight_name)
+                        debug["ipadapter_weight_downloaded"] = weight_name
+                    except Exception as e_download2:
+                        debug["ipadapter_download_error"] = f"{str(e_download)} | {str(e_download2)}"
+                        raise e_download2
                 
-                if IP_FACEID_ADAPTER is None and last_error is not None:
-                    debug["ipadapter_init_error"] = str(last_error)
-                    raise last_error
+                # Initialiser avec la signature correcte: (sd_pipe, ip_ckpt_path, device)
+                try:
+                    IP_FACEID_ADAPTER = IPAdapterFaceClass(pipeline, ip_ckpt_path, "cuda")  # type: ignore
+                    debug["ipadapter_init_variant"] = "sd_pipe_local_path_cuda"
+                except Exception as e_init:
+                    debug["ipadapter_init_error"] = str(e_init)
+                    raise e_init
 
             cache_key = _hash_b64_image(ref_str)
             faceid_embeds = FACE_EMBED_CACHE.get(cache_key)
