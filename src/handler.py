@@ -298,7 +298,9 @@ def handler(event):
                 # Forcer CPU provider uniquement pour éviter les problèmes CUDA
                 # et utiliser le modèle pré-téléchargé
                 app = None
-                insightface_home = os.environ.get("INSIGHTFACE_HOME", "/opt/insightface")
+                # InsightFace ignore INSIGHTFACE_HOME, on force /opt/insightface
+                insightface_home = "/opt/insightface"
+                debug["insightface_home"] = insightface_home
                 
                 for model_name in ["antelopev2", "buffalo_l"]:
                     model_path = f"{insightface_home}/models/{model_name}"

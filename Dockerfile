@@ -42,7 +42,7 @@
     RUN python - <<'PY'
 import os
 from huggingface_hub import snapshot_download
-insightface_home = os.environ.get("INSIGHTFACE_HOME", "/opt/insightface")
+insightface_home = "/opt/insightface"
 models_dir = f"{insightface_home}/models"
 os.makedirs(models_dir, exist_ok=True)
 
@@ -53,9 +53,17 @@ try:
         local_dir=f"{models_dir}/antelopev2",
         local_dir_use_symlinks=False
     )
-    print("antelopev2 downloaded from HuggingFace")
+    print(f"antelopev2 downloaded to {models_dir}/antelopev2")
+    # Vérifier les fichiers
+    import glob
+    files = glob.glob(f"{models_dir}/antelopev2/**/*", recursive=True)
+    print(f"Downloaded {len(files)} files")
+    for f in files[:10]:
+        print(f"  - {f}")
 except Exception as e:
     print(f"antelopev2 download failed: {e}")
+    import traceback
+    traceback.print_exc()
 PY
     
     # 6) IP-Adapter (FaceID Plus XL) — via ZIP (pas de git)
