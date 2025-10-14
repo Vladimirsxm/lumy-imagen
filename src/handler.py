@@ -259,28 +259,36 @@ def handler(event):
 
             global IP_FACEID_ADAPTER
             if IP_FACEID_ADAPTER is None:
-                weight_name = os.getenv("IPADAPTER_WEIGHT", "ip-adapter-faceid-plusv2_sdxl.bin")
-                try:
-                    IP_FACEID_ADAPTER = IPAdapterFaceClass(
-                        pipeline,
-                        "h94/IP-Adapter-FaceID",
-                        torch_dtype=torch.float16,
-                        device="cuda",
-                        weight_name=weight_name,
-                    )
-                except Exception as e_init:
-                    # tentative fallback sur un poids plus générique
+                ip_ckpt = "h94/IP-Adapter-FaceID"
+                weight_primary = os.getenv("IPADAPTER_WEIGHT", "ip-adapter-faceid-plusv2_sdxl.bin")
+                weight_fallback = "ip-adapter-faceid_sdxl.bin"
+                init_attempts = []
+                # variantes d'init avec le poids primaire
+                init_attempts.append({"kwargs": {"pipeline": pipeline, "ip_ckpt": ip_ckpt, "torch_dtype": torch.float16, "device": "cuda", "weight_name": weight_primary}, "variant": "kwargs_full_primary"})
+                init_attempts.append({"kwargs": {"pipeline": pipeline, "ip_ckpt": ip_ckpt, "device": "cuda", "weight_name": weight_primary}, "variant": "kwargs_no_dtype_primary"})
+                init_attempts.append({"args": [pipeline, ip_ckpt, "cuda"], "variant": "args_pipe_ckpt_cuda_primary"})
+                init_attempts.append({"args": [pipeline, ip_ckpt], "variant": "args_pipe_ckpt_primary"})
+                # variantes d'init avec le poids fallback
+                init_attempts.append({"kwargs": {"pipeline": pipeline, "ip_ckpt": ip_ckpt, "torch_dtype": torch.float16, "device": "cuda", "weight_name": weight_fallback}, "variant": "kwargs_full_fallback"})
+                init_attempts.append({"kwargs": {"pipeline": pipeline, "ip_ckpt": ip_ckpt, "device": "cuda", "weight_name": weight_fallback}, "variant": "kwargs_no_dtype_fallback"})
+                last_error = None
+                for attempt in init_attempts:
                     try:
-                        IP_FACEID_ADAPTER = IPAdapterFaceClass(
-                            pipeline,
-                            "h94/IP-Adapter-FaceID",
-                            torch_dtype=torch.float16,
-                            device="cuda",
-                            weight_name="ip-adapter-faceid_sdxl.bin",
-                        )
-                        debug["ipadapter_weight_fallback"] = "ip-adapter-faceid_sdxl.bin"
-                    except Exception as e_init2:
-                        raise e_init2
+                        if "kwargs" in attempt:
+                            IP_FACEID_ADAPTER = IPAdapterFaceClass(**attempt["kwargs"])  # type: ignore
+                        else:
+                            IP_FACEID_ADAPTER = IPAdapterFaceClass(*attempt["args"])  # type: ignore
+                        debug["ipadapter_init_variant"] = attempt["variant"]
+                        break
+                    except TypeError as e_t:
+                        last_error = e_t
+                        continue
+                    except Exception as e_any:
+                        last_error = e_any
+                        continue
+                if IP_FACEID_ADAPTER is None and last_error is not None:
+                    debug["ipadapter_init_error"] = str(last_error)
+                    raise last_error
 
             cache_key = _hash_b64_image(ref_str)
             faceid_embeds = FACE_EMBED_CACHE.get(cache_key)
@@ -291,17 +299,43 @@ def handler(event):
                     faceid_embeds = IP_FACEID_ADAPTER.get_face_embed(ref_img)  # type: ignore
                 FACE_EMBED_CACHE[cache_key] = faceid_embeds
 
-            image = IP_FACEID_ADAPTER.generate(
-                prompt=final_prompt,
-                negative_prompt=negative,
-                faceid_embeds=faceid_embeds,
-                num_inference_steps=steps,
-                guidance_scale=guidance_scale,
-                width=width,
-                height=height,
-                ip_adapter_scale=ip_weight,
-                generator=gen,
-            )[0]
+            # appel generate avec compatibilité ip_adapter_scale/scale
+            try:
+                image = IP_FACEID_ADAPTER.generate(
+                    prompt=final_prompt,
+                    negative_prompt=negative,
+                    faceid_embeds=faceid_embeds,
+                    num_inference_steps=steps,
+                    guidance_scale=guidance_scale,
+                    width=width,
+                    height=height,
+                    ip_adapter_scale=ip_weight,
+                    generator=gen,
+                )[0]
+            except TypeError:
+                try:
+                    image = IP_FACEID_ADAPTER.generate(
+                        prompt=final_prompt,
+                        negative_prompt=negative,
+                        faceid_embeds=faceid_embeds,
+                        num_inference_steps=steps,
+                        guidance_scale=guidance_scale,
+                        width=width,
+                        height=height,
+                        scale=ip_weight,
+                        generator=gen,
+                    )[0]
+                except TypeError:
+                    image = IP_FACEID_ADAPTER.generate(
+                        prompt=final_prompt,
+                        negative_prompt=negative,
+                        faceid_embeds=faceid_embeds,
+                        num_inference_steps=steps,
+                        guidance_scale=guidance_scale,
+                        width=width,
+                        height=height,
+                        generator=gen,
+                    )[0]
             used_faceid = True
         except Exception as e:
             print(f"[handler] FaceID fallback: {e}")

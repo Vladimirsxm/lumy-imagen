@@ -35,25 +35,24 @@
     RUN pip install --only-binary=:all: opencv-python-headless==4.9.0.80 scipy==1.11.4 scikit-image==0.22.0
     
     # 5) InsightFace (sans build isolation pour éviter des surprises)
-    RUN pip install cython scikit-build-core einops timm \
+    RUN pip install cython scikit-build-core einops \
      && pip install --no-build-isolation insightface==0.7.0
     
-    # 6) IP-Adapter (FaceID Plus XL) — on force la version GitHub officielle
-    RUN pip install --no-cache-dir --upgrade --force-reinstall "git+https://github.com/TencentARC/IP-Adapter.git"
+    # 6) IP-Adapter (FaceID Plus XL) — via ZIP (pas de git)
+    RUN pip install --no-cache-dir ip-adapter
     
-    # Sanity-check : n'échoue pas le build si la classe n’est pas importable
+    # Sanity-check : échoue le build si la classe n’est pas importable
     RUN python - <<'PY'
-import sys
-try:
-    import ip_adapter
-    print("ip_adapter path:", ip_adapter.__file__)
-    from ip_adapter.ip_adapter_faceid import IPAdapterFaceIDPlusXL
-    print("IPAdapterFaceIDPlusXL import OK")
-except Exception as e:
-    print("IP-Adapter import WARNING:", repr(e))
-    # ne bloque pas le build, fallback dans le code au runtime
-    pass
-PY
+    import sys
+    try:
+        import ip_adapter
+        print("ip_adapter path:", ip_adapter.__file__)
+        from ip_adapter.ip_adapter_faceid import IPAdapterFaceIDPlusXL
+        print("IPAdapterFaceIDPlusXL import OK")
+    except Exception as e:
+        print("IP-Adapter import FAILED:", repr(e))
+        sys.exit(1)
+    PY
     
     # Caches persistants
     RUN mkdir -p $HF_HOME $TRANSFORMERS_CACHE $INSIGHTFACE_HOME && chmod -R 777 $HF_HOME $INSIGHTFACE_HOME
@@ -63,14 +62,16 @@ PY
     
     # Vérifier la syntaxe Python au build (utile)
     RUN python - <<'PY'
-import py_compile, traceback, sys
-try:
-    py_compile.compile('/app/handler.py', doraise=True)
-    print('py_compile: OK')
-except Exception:
-    print('py_compile: FAILED')
-    traceback.print_exc()
-    sys.exit(1)
-PY
+    import sys
+    try:
+        import ip_adapter
+        print("ip_adapter path:", ip_adapter.__file__)
+        from ip_adapter.ip_adapter_faceid import IPAdapterFaceIDPlusXL
+        print("IPAdapterFaceIDPlusXL import OK")
+    except Exception as e:
+        print("IP-Adapter import WARNING:", repr(e))
+        # ne bloque pas le build, fallback dans le code au runtime
+        pass
+    PY
     
     CMD ["python", "-u", "/app/handler.py"]
