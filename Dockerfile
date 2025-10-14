@@ -71,6 +71,6 @@
         print('py_compile: FAILED')
         traceback.print_exc()
         sys.exit(1)
-    PY
+PY
     
     CMD ["python", "-u", "/app/handler.py"]
