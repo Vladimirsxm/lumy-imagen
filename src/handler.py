@@ -399,9 +399,12 @@ def handler(event):
             
             used_faceid = True
         except Exception as e:
+            import traceback
             print(f"[handler] FaceID fallback: {e}")
+            traceback.print_exc()
             image = None
             debug["faceid_error"] = str(e)
+            debug["faceid_traceback"] = traceback.format_exc()
 
     if image is None:
         if isinstance(pipeline, StableDiffusionXLPipeline):
