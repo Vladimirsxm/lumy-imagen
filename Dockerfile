@@ -1,5 +1,5 @@
 # --- bust cache si besoin ---
-    ARG BUILD_NO=2
+    ARG BUILD_NO=4
 
     FROM pytorch/pytorch:2.4.1-cuda12.1-cudnn9-runtime
     
@@ -12,36 +12,39 @@
         HF_HUB_ENABLE_HF_TRANSFER=1 \
         PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128
     
-    # Outils de base + libs runtime OpenCV
-    RUN apt-get update && apt-get install -y git git-lfs ffmpeg libgl1 libglib2.0-0 && git lfs install && rm -rf /var/lib/apt/lists/*
+    # Outils + runtime OpenCV minimum
+    RUN apt-get update && apt-get install -y \
+        git git-lfs ffmpeg libgl1 libglib2.0-0 \
+     && git lfs install \
+     && rm -rf /var/lib/apt/lists/*
     
     # pip à jour
     RUN python -m pip install --upgrade pip setuptools wheel
     
-    # 1) Libs de base
+    # 1) Bases
     RUN pip install numpy==1.26.4 "pillow>=10.0.0" requests boto3 runpod hf_transfer "huggingface_hub>=0.23"
     
-    # 2) Diffusers/Transformers/Accelerate/Safetensors
+    # 2) Diffusion stack
     RUN pip install diffusers==0.29.0 transformers==4.44.0 accelerate==0.33.0 safetensors==0.4.3
     
-    # 3) ONNX + ONNX Runtime GPU (combo stable CUDA 12.1)
-    RUN pip install onnx==1.16.0 onnxruntime-gpu==1.18.0
+    # 3) ONNX + ONNXRuntime **CPU** (évite les conflits GPU pour insightface)
+    RUN pip install onnx==1.16.0 onnxruntime==1.18.0
     
-    # 4) OpenCV (headless) + InsightFace (wheels CUDA 12.1)
-    RUN pip install opencv-python-headless==4.9.0.80 \
-        && pip install --extra-index-url https://download.pytorch.org/whl/cu121 insightface==0.7.3
+    # 4) OpenCV + DEPENDANCES BINAIRES AVANT insightface
+    #    IMPORTANT: on force des wheels binaires pour éviter toute compile (SciPy/scikit-image).
+    RUN pip install --only-binary=:all: opencv-python-headless==4.9.0.80 \
+     && pip install --only-binary=:all: scipy==1.11.4 scikit-image==0.22.0
+    
+    # 5) InsightFace (utilise ORT CPU) — 0.7.3 fonctionne avec les pins ci-dessus
+    RUN pip install insightface==0.7.3
     
     # Caches persistants
     RUN mkdir -p $HF_HOME $TRANSFORMERS_CACHE $INSIGHTFACE_HOME && chmod -R 777 $HF_HOME $INSIGHTFACE_HOME
     
-    # (Optionnel) pré-téléchargement supprimé pour éviter les erreurs heredoc
-    
     WORKDIR /app
-    
-    # Copie uniquement le code handler (dans src/)
     COPY src/ /app
     
-    # Si ton handler est à la racine du repo et s'appelle handler.py, rien à faire.
-    # Si tu l'as dans un sous-dossier (ex: src/handler.py), assure-toi que COPY ci-dessus l'amène bien dans /app.
+    # (optionnel) sanity check rapide
+    # RUN python -c "import insightface, onnxruntime, cv2; print('insightface', insightface.__version__, 'onnxruntime', onnxruntime.__version__, 'cv2', cv2.__version__)"
     
     CMD ["python", "-u", "/app/handler.py"]
