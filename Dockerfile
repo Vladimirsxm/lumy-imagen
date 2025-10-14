@@ -38,9 +38,8 @@
     RUN pip install cython scikit-build-core \
      && pip install --no-build-isolation insightface==0.7.0
     
-    # 6) IP-Adapter (FaceID Plus XL) — via ZIP (pas de git)
-    RUN pip install --no-cache-dir \
-      "https://github.com/h94/IP-Adapter/archive/refs/heads/main.zip"
+    # 6) IP-Adapter (FaceID Plus XL) — via git+https
+    RUN pip install --no-cache-dir "git+https://github.com/h94/IP-Adapter.git"
     
     # Sanity-check : échoue le build si la classe n’est pas importable
     RUN python - <<'PY'
@@ -53,7 +52,7 @@
     except Exception as e:
         print("IP-Adapter import FAILED:", repr(e))
         sys.exit(1)
-    PY
+PY
     
     # Caches persistants
     RUN mkdir -p $HF_HOME $TRANSFORMERS_CACHE $INSIGHTFACE_HOME && chmod -R 777 $HF_HOME $INSIGHTFACE_HOME
