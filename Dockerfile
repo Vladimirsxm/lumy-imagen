@@ -38,8 +38,8 @@
     RUN pip install cython scikit-build-core \
      && pip install --no-build-isolation insightface==0.7.0
     
-    # 6) IP-Adapter (FaceID Plus XL) — via git+https
-    RUN pip install --no-cache-dir "git+https://github.com/h94/IP-Adapter.git"
+    # 6) IP-Adapter (FaceID Plus XL) — via PyPI
+    RUN pip install --no-cache-dir ip-adapter
     
     # Sanity-check : échoue le build si la classe n’est pas importable
     RUN python - <<'PY'
