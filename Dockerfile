@@ -35,12 +35,11 @@
     RUN pip install --only-binary=:all: opencv-python-headless==4.9.0.80 scipy==1.11.4 scikit-image==0.22.0
     
     # 5) InsightFace (sans build isolation pour éviter des surprises)
-    RUN pip install cython scikit-build-core einops \
+    RUN pip install cython scikit-build-core einops timm \
      && pip install --no-build-isolation insightface==0.7.0
     
-    # 6) IP-Adapter (FaceID Plus XL)
-    # d'abord via PyPI (rapide) puis fallback vers GitHub officiel si besoin
-    RUN pip install --no-cache-dir ip-adapter || pip install --no-cache-dir "git+https://github.com/TencentARC/IP-Adapter.git"
+    # 6) IP-Adapter (FaceID Plus XL) — on force la version GitHub officielle
+    RUN pip install --no-cache-dir --upgrade --force-reinstall "git+https://github.com/TencentARC/IP-Adapter.git"
     
     # Sanity-check : n'échoue pas le build si la classe n’est pas importable
     RUN python - <<'PY'
