@@ -31,7 +31,7 @@ RUN pip install onnx==1.16.0 onnxruntime-gpu==1.18.0
 # 4) OpenCV + deps SciPy + InsightFace (wheels uniquement)
 RUN pip install --only-binary=:all: opencv-python-headless==4.8.1.78 \
     && pip install --only-binary=:all: scipy==1.11.4 scikit-image==0.22.0 \
-    && pip install insightface==0.7.3
+    && pip install insightface==0.7.2
 
 # Caches persistants
 RUN mkdir -p $HF_HOME $TRANSFORMERS_CACHE $INSIGHTFACE_HOME && chmod -R 777 $HF_HOME $INSIGHTFACE_HOME
