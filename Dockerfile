@@ -43,8 +43,8 @@
     RUN mkdir -p $HF_HOME $TRANSFORMERS_CACHE $INSIGHTFACE_HOME && chmod -R 777 $HF_HOME $INSIGHTFACE_HOME
     
     WORKDIR /app
-    # IMPORTANT: chemin relatif au repo — on copie le bon dossier
-    COPY lumy-imagen/src/ /app
+    # IMPORTANT: le Dockerfile est dans lumy-imagen/, donc on copie simplement src/
+    COPY src/ /app
     # Vérifier la syntaxe Python au build (évite de déployer un handler invalide)
     RUN python -m py_compile /app/handler.py
     
