@@ -25,18 +25,47 @@ try:
 except Exception:
     AutoencoderKL = None  # type: ignore
 
+# -------- IP-Adapter FaceID XL (try multi-chemins) --------
+IPAdapterFaceIDPlusXL = None
+_ipadapter_import_src = "none"
+
 try:
-    # Priorité: package officiel h94/ip-adapter
-    from ip_adapter import IPAdapterFaceIDPlusXL  # type: ignore
-except Exception:
+    # Chemin du paquet pip officiel h94/ip-adapter
+    from ip_adapter.ip_adapter_faceid import IPAdapterFaceIDPlusXL  # pip install ip-adapter
+    _ipadapter_import_src = "ip_adapter.ip_adapter_faceid"
+except Exception as e1:
     try:
-        # Fallback si diffusers expose la classe
-        from diffusers.pipelines.ip_adapter import IPAdapterFaceIDPlusXL  # type: ignore
-    except Exception:
+        # Certains wheel exposent au top-level
+        from ip_adapter import IPAdapterFaceIDPlusXL
+        _ipadapter_import_src = "ip_adapter"
+    except Exception as e2:
         try:
-            from diffusers import IPAdapterFaceIDPlusXL  # type: ignore
-        except Exception:
-            IPAdapterFaceIDPlusXL = None  # on tracera dans debug
+            # diffusers >= 0.30
+            from diffusers.pipelines.ip_adapter import IPAdapterFaceIDPlusXL  # type: ignore
+            _ipadapter_import_src = "diffusers.pipelines.ip_adapter"
+        except Exception as e3:
+            try:
+                # autre export possible
+                from diffusers import IPAdapterFaceIDPlusXL  # type: ignore
+                _ipadapter_import_src = "diffusers"
+            except Exception as e4:
+                IPAdapterFaceIDPlusXL = None
+                print("[handler] IPAdapterFaceIDPlusXL import failed:",
+                      repr(e1), repr(e2), repr(e3), repr(e4))
+
+    try:
+    import diffusers as _df
+    _df_ver = getattr(_df, "__version__", "?")
+except Exception:
+    _df_ver = "?"
+
+try:
+    import ip_adapter as _ipa
+    _ipa_ver = getattr(_ipa, "__version__", "?")
+except Exception:
+    _ipa_ver = "not-imported"
+
+print(f"[diag] diffusers={_df_ver}, ip-adapter={_ipa_ver}, ipadapter_import_src={_ipadapter_import_src}")
 
 
 pipeline = None
@@ -207,6 +236,9 @@ def handler(event):
         "has_ref_image": bool(reference_face_b64),
         "has_ipadapter_class": IPAdapterFaceIDPlusXL is not None,
         "pipeline_kind": CURRENT_PIPELINE_KIND,
+        "diffusers": _df_ver,
+        "ip-adapter": _ipa_ver,
+        "ipadapter_import_src": _ipadapter_import_src,
     }
 
     if (
