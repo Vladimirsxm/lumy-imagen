@@ -260,38 +260,29 @@ def handler(event):
             global IP_FACEID_ADAPTER
             if IP_FACEID_ADAPTER is None:
                 ip_ckpt = "h94/IP-Adapter-FaceID"
-                image_encoder = "laion/CLIP-ViT-H-14-laion2B-s32B-b79K"
                 init_attempts = []
                 
-                # Tentatives d'initialisation (ordre du plus spécifique au plus générique)
-                # Variante 1: args positionnels complets
-                init_attempts.append({"args": [pipeline, image_encoder, ip_ckpt, "cuda"], "variant": "args_4"})
-                # Variante 2: args positionnels sans device
-                init_attempts.append({"args": [pipeline, image_encoder, ip_ckpt], "variant": "args_3"})
-                # Variante 3: seulement pipeline et ip_ckpt
-                init_attempts.append({"args": [pipeline, ip_ckpt], "variant": "args_2"})
-                # Variante 4: seulement pipeline
-                init_attempts.append({"args": [pipeline], "variant": "args_1"})
-                # Variante 5: kwargs sans pipe/sd_pipe
-                init_attempts.append({"kwargs": {"image_encoder_path": image_encoder, "ip_ckpt": ip_ckpt, "device": "cuda", "num_tokens": 4}, "variant": "kwargs_no_pipe"})
+                # Tentatives d'initialisation avec différentes signatures
+                # Signature 1: sd_pipe comme premier arg positionnel
+                init_attempts.append({"call": lambda: IPAdapterFaceClass(pipeline, ip_ckpt, "cuda"), "variant": "sd_pipe_pos_3args"})
+                # Signature 2: sd_pipe et ip_ckpt seulement
+                init_attempts.append({"call": lambda: IPAdapterFaceClass(pipeline, ip_ckpt), "variant": "sd_pipe_pos_2args"})
+                # Signature 3: juste sd_pipe
+                init_attempts.append({"call": lambda: IPAdapterFaceClass(pipeline), "variant": "sd_pipe_pos_1arg"})
                 
                 last_error = None
                 for attempt in init_attempts:
                     try:
-                        if "kwargs" in attempt:
-                            IP_FACEID_ADAPTER = IPAdapterFaceClass(**attempt["kwargs"])  # type: ignore
-                            # Si kwargs sans pipe, il faut peut-être set_pipe après
-                            if hasattr(IP_FACEID_ADAPTER, 'set_pipe'):
-                                IP_FACEID_ADAPTER.set_pipe(pipeline)
-                        else:
-                            IP_FACEID_ADAPTER = IPAdapterFaceClass(*attempt["args"])  # type: ignore
+                        IP_FACEID_ADAPTER = attempt["call"]()  # type: ignore
                         debug["ipadapter_init_variant"] = attempt["variant"]
                         break
-                    except (TypeError, AttributeError) as e_t:
-                        last_error = e_t
+                    except (TypeError, AttributeError, ValueError) as e:
+                        last_error = e
+                        debug[f"init_attempt_{attempt['variant']}"] = str(e)
                         continue
-                    except Exception as e_any:
-                        last_error = e_any
+                    except Exception as e:
+                        last_error = e
+                        debug[f"init_attempt_{attempt['variant']}"] = str(e)
                         continue
                 
                 if IP_FACEID_ADAPTER is None and last_error is not None:
