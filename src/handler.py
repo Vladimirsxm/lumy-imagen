@@ -1,6 +1,6 @@
 import os
 
-# Fixer les caches AVANT d'importer les lib lourdes
+# Fixer les caches AVANT d'importer les libs lourdes
 os.environ.setdefault("HF_HOME", "/opt/hf_cache")
 os.environ.setdefault("TRANSFORMERS_CACHE", "/opt/hf_cache/transformers")
 os.environ.setdefault("INSIGHTFACE_HOME", "/opt/insightface")
@@ -13,7 +13,12 @@ import requests
 from PIL import Image
 import torch
 import runpod
-from diffusers import StableDiffusionPipeline, StableDiffusionXLPipeline, DPMSolverMultistepScheduler
+
+from diffusers import (
+    StableDiffusionPipeline,
+    StableDiffusionXLPipeline,
+    DPMSolverMultistepScheduler,
+)
 
 try:
     from diffusers import StableDiffusionXLRefinerPipeline  # type: ignore
@@ -25,18 +30,18 @@ try:
 except Exception:
     AutoencoderKL = None  # type: ignore
 
-# -------- IP-Adapter FaceID XL (try multi-chemins) --------
+# -------- IP-Adapter FaceID XL (multi-chemins) --------
 IPAdapterFaceIDPlusXL = None
 _ipadapter_import_src = "none"
 
 try:
-    # Chemin du paquet pip officiel h94/ip-adapter
-    from ip_adapter.ip_adapter_faceid import IPAdapterFaceIDPlusXL  # pip install ip-adapter
+    # Paquet officiel (pip install ip-adapter)
+    from ip_adapter.ip_adapter_faceid import IPAdapterFaceIDPlusXL  # type: ignore
     _ipadapter_import_src = "ip_adapter.ip_adapter_faceid"
 except Exception as e1:
     try:
-        # Certains wheel exposent au top-level
-        from ip_adapter import IPAdapterFaceIDPlusXL
+        # Certains wheels exposent au top-level
+        from ip_adapter import IPAdapterFaceIDPlusXL  # type: ignore
         _ipadapter_import_src = "ip_adapter"
     except Exception as e2:
         try:
@@ -45,29 +50,29 @@ except Exception as e1:
             _ipadapter_import_src = "diffusers.pipelines.ip_adapter"
         except Exception as e3:
             try:
-                # autre export possible
                 from diffusers import IPAdapterFaceIDPlusXL  # type: ignore
                 _ipadapter_import_src = "diffusers"
             except Exception as e4:
                 IPAdapterFaceIDPlusXL = None
-                print("[handler] IPAdapterFaceIDPlusXL import failed:",
-                      repr(e1), repr(e2), repr(e3), repr(e4))
+                print(
+                    "[handler] IPAdapterFaceIDPlusXL import failed:",
+                    repr(e1), repr(e2), repr(e3), repr(e4)
+                )
 
-    try:
+# Petit diag utile dans les logs
+try:
     import diffusers as _df
     _df_ver = getattr(_df, "__version__", "?")
 except Exception:
     _df_ver = "?"
-
 try:
-    import ip_adapter as _ipa
-    _ipa_ver = getattr(_ipa, "__version__", "?")
+    import ip_adapter as _ipa  # type: ignore
+    _ipa_ver = getattr(_ipa, "__version__", "imported")
 except Exception:
     _ipa_ver = "not-imported"
-
 print(f"[diag] diffusers={_df_ver}, ip-adapter={_ipa_ver}, ipadapter_import_src={_ipadapter_import_src}")
 
-
+# -------- Variables globales --------
 pipeline = None
 refiner_pipeline = None
 CURRENT_MODEL_ID = None

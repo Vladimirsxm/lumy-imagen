@@ -50,7 +50,16 @@ RUN pip install diffusers==0.31.0 transformers==4.44.0 accelerate==0.33.0 safete
     # IMPORTANT: le Dockerfile est dans lumy-imagen/, donc on copie simplement src/
     COPY src/ /app
     # Vérifier la syntaxe Python au build (évite de déployer un handler invalide)
-    RUN python -m py_compile /app/handler.py
+    RUN python - <<'PY'
+import py_compile, traceback, sys
+try:
+    py_compile.compile('/app/handler.py', doraise=True)
+    print('py_compile: OK')
+except Exception:
+    print('py_compile: FAILED')
+    traceback.print_exc()
+    sys.exit(1)
+PY
     
     # (optionnel) sanity check rapide
     # RUN python -c "import insightface, onnxruntime, cv2; print('insightface', insightface.__version__, 'onnxruntime', onnxruntime.__version__, 'cv2', cv2.__version__)"
