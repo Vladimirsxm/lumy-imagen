@@ -26,12 +26,17 @@ except Exception:
     AutoencoderKL = None  # type: ignore
 
 try:
-    from diffusers.pipelines.ip_adapter import IPAdapterFaceIDPlusXL  # >= 0.30
+    # Priorité: package officiel h94/ip-adapter
+    from ip_adapter import IPAdapterFaceIDPlusXL  # type: ignore
 except Exception:
     try:
-        from diffusers import IPAdapterFaceIDPlusXL  # certains builds
+        # Fallback si diffusers expose la classe
+        from diffusers.pipelines.ip_adapter import IPAdapterFaceIDPlusXL  # type: ignore
     except Exception:
-        IPAdapterFaceIDPlusXL = None  # on verra dans debug
+        try:
+            from diffusers import IPAdapterFaceIDPlusXL  # type: ignore
+        except Exception:
+            IPAdapterFaceIDPlusXL = None  # on tracera dans debug
 
 
 pipeline = None

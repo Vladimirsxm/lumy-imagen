@@ -39,6 +39,9 @@ RUN pip install diffusers==0.31.0 transformers==4.44.0 accelerate==0.33.0 safete
     # 5) InsightFace — Option B: autoriser compilation locale si pas de wheel
     RUN pip install cython scikit-build-core \
      && pip install --no-build-isolation insightface==0.7.0
+
+    # 6) IP-Adapter (FaceID Plus XL)
+    RUN pip install ip-adapter
     
     # Caches persistants
     RUN mkdir -p $HF_HOME $TRANSFORMERS_CACHE $INSIGHTFACE_HOME && chmod -R 777 $HF_HOME $INSIGHTFACE_HOME
