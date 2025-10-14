@@ -43,7 +43,10 @@
     RUN mkdir -p $HF_HOME $TRANSFORMERS_CACHE $INSIGHTFACE_HOME && chmod -R 777 $HF_HOME $INSIGHTFACE_HOME
     
     WORKDIR /app
-    COPY src/ /app
+    # IMPORTANT: chemin relatif au repo — on copie le bon dossier
+    COPY lumy-imagen/src/ /app
+    # Vérifier la syntaxe Python au build (évite de déployer un handler invalide)
+    RUN python -m py_compile /app/handler.py
     
     # (optionnel) sanity check rapide
     # RUN python -c "import insightface, onnxruntime, cv2; print('insightface', insightface.__version__, 'onnxruntime', onnxruntime.__version__, 'cv2', cv2.__version__)"
