@@ -65,9 +65,11 @@
     WORKDIR /app
     
     # Copie uniquement le code handler (dans src/)
-    COPY src/ /app
+    COPY . /app
+
+    RUN ls -alh /app | sed -n '1,200p'
     
     # Si ton handler est à la racine du repo et s'appelle handler.py, rien à faire.
     # Si tu l'as dans un sous-dossier (ex: src/handler.py), assure-toi que COPY ci-dessus l'amène bien dans /app.
     
-    CMD ["python", "-u", "handler.py"]
+    CMD ["python", "-u", "/app/handler.py"]
