@@ -27,8 +27,9 @@
     # 3) ONNX + ONNX Runtime GPU (combo stable CUDA 12.1)
     RUN pip install onnx==1.16.0 onnxruntime-gpu==1.18.0
     
-    # 4) OpenCV (headless) + InsightFace (laisse tirer ses deps compatibles)
-    RUN pip install opencv-python-headless==4.9.0.80 insightface==0.7.3
+    # 4) OpenCV (headless) + InsightFace (wheels CUDA 12.1)
+    RUN pip install opencv-python-headless==4.9.0.80 \
+        && pip install --extra-index-url https://download.pytorch.org/whl/cu121 insightface==0.7.3
     
     # Caches persistants
     RUN mkdir -p $HF_HOME $TRANSFORMERS_CACHE $INSIGHTFACE_HOME && chmod -R 777 $HF_HOME $INSIGHTFACE_HOME
@@ -69,4 +70,4 @@
     # Si ton handler est à la racine du repo et s'appelle handler.py, rien à faire.
     # Si tu l'as dans un sous-dossier (ex: src/handler.py), assure-toi que COPY ci-dessus l'amène bien dans /app.
     
-    CMD ["python", "-u", "/app/handler.py"]
+    CMD ["python", "-u", "handler.py"]
