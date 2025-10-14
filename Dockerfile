@@ -38,20 +38,39 @@
     RUN pip install cython scikit-build-core einops \
      && pip install --no-build-isolation insightface==0.7.0
     
-    # Pré-télécharger les modèles InsightFace pour éviter l'échec au runtime
+    # Télécharger les modèles InsightFace depuis HuggingFace au lieu de l'URL officielle
     RUN python - <<'PY'
 import os
-from insightface.app import FaceAnalysis
+from huggingface_hub import hf_hub_download
+insightface_home = os.environ.get("INSIGHTFACE_HOME", "/opt/insightface")
+os.makedirs(insightface_home, exist_ok=True)
+os.makedirs(f"{insightface_home}/models", exist_ok=True)
+
+# Télécharger buffalo_l depuis HF
 try:
-    app = FaceAnalysis(name="buffalo_l", providers=['CPUExecutionProvider'])
-    app.prepare(ctx_id=-1, det_size=(640, 640))
-    print("buffalo_l model downloaded successfully")
+    model_path = hf_hub_download(
+        repo_id="public-data/insightface",
+        filename="models/buffalo_l.zip",
+        cache_dir=insightface_home
+    )
+    # Décompresser
+    import zipfile
+    with zipfile.ZipFile(model_path, 'r') as zip_ref:
+        zip_ref.extractall(f"{insightface_home}/models/buffalo_l")
+    print("buffalo_l downloaded from HuggingFace")
 except Exception as e:
-    print(f"buffalo_l download failed: {e}, will use antelopev2 as fallback")
+    print(f"buffalo_l download failed: {e}")
+    # Fallback: essayer antelopev2
     try:
-        app = FaceAnalysis(name="antelopev2", providers=['CPUExecutionProvider'])
-        app.prepare(ctx_id=-1, det_size=(640, 640))
-        print("antelopev2 model downloaded successfully")
+        model_path = hf_hub_download(
+            repo_id="public-data/insightface",
+            filename="models/antelopev2.zip",
+            cache_dir=insightface_home
+        )
+        import zipfile
+        with zipfile.ZipFile(model_path, 'r') as zip_ref:
+            zip_ref.extractall(f"{insightface_home}/models/antelopev2")
+        print("antelopev2 downloaded from HuggingFace")
     except Exception as e2:
         print(f"antelopev2 download also failed: {e2}")
 PY
