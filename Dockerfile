@@ -13,13 +13,13 @@ ENV DEBIAN_FRONTEND=noninteractive \
 RUN apt-get update && apt-get install -y git git-lfs && git lfs install && rm -rf /var/lib/apt/lists/*
 
 # Librairies système requises par OpenCV (ffmpeg, libgl, glib)
-RUN apt-get update && apt-get install -y ffmpeg libgl1 libglib2.0-0 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ffmpeg libgl1 libglib2.0-0 libsm6 libxext6 libxrender1 && rm -rf /var/lib/apt/lists/*
 
 # pip/setuptools à jour
 RUN python -m pip install --upgrade pip setuptools wheel
 
-# 1) Base libs
-RUN pip install "pillow>=10.0.0" numpy requests boto3 runpod hf_transfer "huggingface_hub>=0.23"
+# 1) Base libs (numpy épinglé pour compat OpenCV/InsightFace)
+RUN pip install numpy==1.26.4 "pillow>=10.0.0" requests boto3 runpod hf_transfer "huggingface_hub>=0.23"
 
 # 2) Diffusers/Transformers/Accelerate/Safetensors
 RUN pip install diffusers==0.29.0 transformers==4.44.0 accelerate==0.33.0 safetensors==0.4.3
