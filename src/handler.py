@@ -295,20 +295,37 @@ def handler(event):
                 from insightface.app import FaceAnalysis
                 import numpy as np
                 
-                # Essayer buffalo_l, puis antelopev2 en fallback
+                # Forcer CPU provider uniquement pour éviter les problèmes CUDA
+                # et utiliser le modèle pré-téléchargé
                 app = None
-                for model_name in ["buffalo_l", "antelopev2"]:
+                insightface_home = os.environ.get("INSIGHTFACE_HOME", "/opt/insightface")
+                
+                for model_name in ["antelopev2", "buffalo_l"]:
+                    model_path = f"{insightface_home}/models/{model_name}"
+                    # Vérifier si le modèle existe localement
+                    if not os.path.exists(model_path):
+                        debug[f"insightface_{model_name}_not_found"] = model_path
+                        continue
+                    
                     try:
-                        app = FaceAnalysis(name=model_name, providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
-                        app.prepare(ctx_id=0, det_size=(640, 640))
+                        # Utiliser allowed_modules=None pour charger depuis le chemin local
+                        app = FaceAnalysis(
+                            name=model_name,
+                            root=insightface_home,
+                            providers=['CPUExecutionProvider'],
+                            allowed_modules=['detection', 'recognition']
+                        )
+                        # ctx_id=-1 pour CPU
+                        app.prepare(ctx_id=-1, det_size=(640, 640))
                         debug["insightface_model"] = model_name
+                        debug["insightface_provider"] = "CPU"
                         break
                     except Exception as e_model:
                         debug[f"insightface_{model_name}_error"] = str(e_model)
                         continue
                 
                 if app is None:
-                    raise RuntimeError("Failed to load any InsightFace model (buffalo_l, antelopev2)")
+                    raise RuntimeError(f"Failed to load any InsightFace model from {insightface_home}/models/")
                 
                 # Convertir PIL en numpy array
                 ref_img_np = np.array(ref_img)
