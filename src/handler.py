@@ -26,9 +26,12 @@ except Exception:
     AutoencoderKL = None  # type: ignore
 
 try:
-    from diffusers import IPAdapterFaceIDPlusXL  # type: ignore
+    from diffusers.pipelines.ip_adapter import IPAdapterFaceIDPlusXL  # >= 0.30
 except Exception:
-    IPAdapterFaceIDPlusXL = None  # type: ignore
+    try:
+        from diffusers import IPAdapterFaceIDPlusXL  # certains builds
+    except Exception:
+        IPAdapterFaceIDPlusXL = None  # on verra dans debug
 
 
 pipeline = None

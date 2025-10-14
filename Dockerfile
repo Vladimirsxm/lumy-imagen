@@ -26,7 +26,8 @@
     RUN pip install numpy==1.26.4 "pillow>=10.0.0" requests boto3 runpod hf_transfer "huggingface_hub>=0.23"
     
     # 2) Diffusion stack
-    RUN pip install diffusers==0.29.0 transformers==4.44.0 accelerate==0.33.0 safetensors==0.4.3
+    # diffusers >= 0.30 apporte IP-Adapter FaceID XL
+RUN pip install diffusers==0.31.0 transformers==4.44.0 accelerate==0.33.0 safetensors==0.4.3
     
     # 3) Torch CUDA 12.1 + ONNXRuntime CPU
     RUN pip install --index-url https://download.pytorch.org/whl/cu121 torch==2.4.1 torchvision==0.19.1 torchaudio==2.4.1 \
