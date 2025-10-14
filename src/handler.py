@@ -23,6 +23,8 @@ try:
 except Exception:
     IPAdapterFaceIDPlusXL = None  # type: ignore
 
+
+
 pipeline = None
 refiner_pipeline = None
 CURRENT_MODEL_ID = None
