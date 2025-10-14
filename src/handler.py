@@ -263,12 +263,14 @@ def handler(event):
                 weight_primary = os.getenv("IPADAPTER_WEIGHT", "ip-adapter-faceid-plusv2_sdxl.bin")
                 weight_fallback = "ip-adapter-faceid_sdxl.bin"
                 init_attempts = []
-                # variantes d'init avec le poids primaire
-                init_attempts.append({"kwargs": {"pipeline": pipeline, "ip_ckpt": ip_ckpt, "device": "cuda", "weight_name": weight_primary}, "variant": "kwargs_primary"})
-                init_attempts.append({"args": [pipeline, ip_ckpt, "cuda"], "variant": "args_pipe_ckpt_cuda_primary"})
-                init_attempts.append({"args": [pipeline, ip_ckpt], "variant": "args_pipe_ckpt_primary"})
-                # variantes d'init avec le poids fallback
-                init_attempts.append({"kwargs": {"pipeline": pipeline, "ip_ckpt": ip_ckpt, "device": "cuda", "weight_name": weight_fallback}, "variant": "kwargs_fallback"})
+                # Tentatives avec poids primaire
+                init_attempts.append({"kwargs": {"sd_pipe": pipeline, "image_encoder_path": "laion/CLIP-ViT-H-14-laion2B-s32B-b79K", "ip_ckpt": ip_ckpt, "device": "cuda", "num_tokens": 4}, "variant": "kwargs_sd_pipe_primary"})
+                init_attempts.append({"kwargs": {"pipe": pipeline, "image_encoder_path": "laion/CLIP-ViT-H-14-laion2B-s32B-b79K", "ip_ckpt": ip_ckpt, "device": "cuda"}, "variant": "kwargs_pipe_primary"})
+                init_attempts.append({"args": [pipeline, ip_ckpt, "cuda"], "variant": "args_3_primary"})
+                init_attempts.append({"args": [pipeline, ip_ckpt], "variant": "args_2_primary"})
+                # Tentatives avec poids fallback
+                init_attempts.append({"kwargs": {"sd_pipe": pipeline, "image_encoder_path": "laion/CLIP-ViT-H-14-laion2B-s32B-b79K", "ip_ckpt": ip_ckpt, "device": "cuda", "num_tokens": 4}, "variant": "kwargs_sd_pipe_fallback"})
+                init_attempts.append({"kwargs": {"pipe": pipeline, "image_encoder_path": "laion/CLIP-ViT-H-14-laion2B-s32B-b79K", "ip_ckpt": ip_ckpt, "device": "cuda"}, "variant": "kwargs_pipe_fallback"})
                 last_error = None
                 for attempt in init_attempts:
                     try:
@@ -297,18 +299,19 @@ def handler(event):
                     faceid_embeds = IP_FACEID_ADAPTER.get_face_embed(ref_img)  # type: ignore
                 FACE_EMBED_CACHE[cache_key] = faceid_embeds
 
-            # appel generate avec compatibilité ip_adapter_scale/scale et signatures
+            # Appel generate avec compatibilité multi-signatures
             try:
                 image = IP_FACEID_ADAPTER.generate(
                     prompt=final_prompt,
                     negative_prompt=negative,
                     faceid_embeds=faceid_embeds,
+                    num_samples=1,
                     num_inference_steps=steps,
                     guidance_scale=guidance_scale,
                     width=width,
                     height=height,
-                    ip_adapter_scale=ip_weight,
-                    generator=gen,
+                    scale=ip_weight,
+                    seed=seed,
                 )[0]
             except TypeError:
                 try:
@@ -320,7 +323,7 @@ def handler(event):
                         guidance_scale=guidance_scale,
                         width=width,
                         height=height,
-                        scale=ip_weight,
+                        ip_adapter_scale=ip_weight,
                         generator=gen,
                     )[0]
                 except TypeError:
