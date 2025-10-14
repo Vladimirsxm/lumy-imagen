@@ -43,16 +43,16 @@
     
     # Sanity-check : n'échoue pas le build si la classe n’est pas importable
     RUN python - <<'PY'
-    import sys
-    try:
-        import ip_adapter
-        print("ip_adapter path:", ip_adapter.__file__)
-        from ip_adapter.ip_adapter_faceid import IPAdapterFaceIDPlusXL
-        print("IPAdapterFaceIDPlusXL import OK")
-    except Exception as e:
-        print("IP-Adapter import WARNING:", repr(e))
-        # ne bloque pas le build, fallback dans le code au runtime
-        pass
+import sys
+try:
+    import ip_adapter
+    print("ip_adapter path:", ip_adapter.__file__)
+    from ip_adapter.ip_adapter_faceid import IPAdapterFaceIDPlusXL
+    print("IPAdapterFaceIDPlusXL import OK")
+except Exception as e:
+    print("IP-Adapter import WARNING:", repr(e))
+    # ne bloque pas le build, fallback dans le code au runtime
+    pass
 PY
     
     # Caches persistants
@@ -63,14 +63,14 @@ PY
     
     # Vérifier la syntaxe Python au build (utile)
     RUN python - <<'PY'
-    import py_compile, traceback, sys
-    try:
-        py_compile.compile('/app/handler.py', doraise=True)
-        print('py_compile: OK')
-    except Exception:
-        print('py_compile: FAILED')
-        traceback.print_exc()
-        sys.exit(1)
+import py_compile, traceback, sys
+try:
+    py_compile.compile('/app/handler.py', doraise=True)
+    print('py_compile: OK')
+except Exception:
+    print('py_compile: FAILED')
+    traceback.print_exc()
+    sys.exit(1)
 PY
     
     CMD ["python", "-u", "/app/handler.py"]
