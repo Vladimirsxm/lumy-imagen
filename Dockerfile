@@ -1,5 +1,5 @@
 # --- bust cache si besoin ---
-    ARG BUILD_NO=4
+    ARG BUILD_NO=5
 
     FROM pytorch/pytorch:2.4.1-cuda12.1-cudnn9-runtime
     
@@ -41,7 +41,19 @@ RUN pip install diffusers==0.31.0 transformers==4.44.0 accelerate==0.33.0 safete
      && pip install --no-build-isolation insightface==0.7.0
 
     # 6) IP-Adapter (FaceID Plus XL)
-    RUN pip install ip-adapter
+    RUN pip install "git+https://github.com/h94/IP-Adapter.git@main"
+
+    RUN python - <<'PY'
+import sys
+try:
+    import ip_adapter
+    print("ip_adapter path:", ip_adapter.__file__)
+    from ip_adapter.ip_adapter_faceid import IPAdapterFaceIDPlusXL
+    print("IPAdapterFaceIDPlusXL import OK")
+except Exception as e:
+    print("IP-Adapter import FAILED:", repr(e))
+    sys.exit(1)
+PY
     
     # Caches persistants
     RUN mkdir -p $HF_HOME $TRANSFORMERS_CACHE $INSIGHTFACE_HOME && chmod -R 777 $HF_HOME $INSIGHTFACE_HOME
