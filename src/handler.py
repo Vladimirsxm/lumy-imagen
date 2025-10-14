@@ -348,8 +348,9 @@ def handler(event):
                 FACE_EMBED_CACHE[cache_key] = faceid_embeds
 
             # Appel generate avec compatibilité multi-signatures
+            result_img = None
             try:
-                image = IP_FACEID_ADAPTER.generate(
+                result_img = IP_FACEID_ADAPTER.generate(
                     prompt=final_prompt,
                     negative_prompt=negative,
                     faceid_embeds=faceid_embeds,
@@ -360,10 +361,11 @@ def handler(event):
                     height=height,
                     scale=ip_weight,
                     seed=seed,
-                )[0]
-            except TypeError:
+                )
+            except TypeError as e1:
+                debug["generate_attempt1_error"] = str(e1)
                 try:
-                    image = IP_FACEID_ADAPTER.generate(
+                    result_img = IP_FACEID_ADAPTER.generate(
                         prompt=final_prompt,
                         negative_prompt=negative,
                         faceid_embeds=faceid_embeds,
@@ -373,9 +375,10 @@ def handler(event):
                         height=height,
                         ip_adapter_scale=ip_weight,
                         generator=gen,
-                    )[0]
-                except TypeError:
-                    image = IP_FACEID_ADAPTER.generate(
+                    )
+                except TypeError as e2:
+                    debug["generate_attempt2_error"] = str(e2)
+                    result_img = IP_FACEID_ADAPTER.generate(
                         prompt=final_prompt,
                         negative_prompt=negative,
                         faceid_embeds=faceid_embeds,
@@ -384,7 +387,16 @@ def handler(event):
                         width=width,
                         height=height,
                         generator=gen,
-                    )[0]
+                    )
+            
+            # Extraire l'image du résultat (peut être PIL.Image, list, ou tuple)
+            if isinstance(result_img, list):
+                image = result_img[0]
+            elif isinstance(result_img, tuple):
+                image = result_img[0]
+            else:
+                image = result_img
+            
             used_faceid = True
         except Exception as e:
             print(f"[handler] FaceID fallback: {e}")
