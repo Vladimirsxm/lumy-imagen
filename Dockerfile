@@ -13,7 +13,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
 RUN apt-get update && apt-get install -y git git-lfs && git lfs install && rm -rf /var/lib/apt/lists/*
 
 # Librairies système requises par OpenCV (ffmpeg, libgl, glib)
-RUN apt-get update && apt-get install -y ffmpeg libgl1 libglib2.0-0 libsm6 libxext6 libxrender1 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ffmpeg libgl1 libglib2.0-0 libsm6 libxext6 libxrender1 \
+    build-essential cmake ninja-build python3-dev libopenblas-dev liblapack-dev && rm -rf /var/lib/apt/lists/*
 
 # pip/setuptools à jour
 RUN python -m pip install --upgrade pip setuptools wheel
@@ -31,7 +32,7 @@ RUN pip install onnx==1.16.0 onnxruntime-gpu==1.18.0
 # 4) OpenCV + deps SciPy + InsightFace (wheels uniquement)
 RUN pip install --only-binary=:all: opencv-python-headless==4.8.1.78 \
     && pip install --only-binary=:all: scipy==1.11.4 scikit-image==0.22.0 \
-    && pip install insightface==0.7.2
+    && pip install insightface==0.6.3
 
 # Caches persistants
 RUN mkdir -p $HF_HOME $TRANSFORMERS_CACHE $INSIGHTFACE_HOME && chmod -R 777 $HF_HOME $INSIGHTFACE_HOME
