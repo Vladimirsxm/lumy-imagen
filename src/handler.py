@@ -190,15 +190,17 @@ def handler(event):
     scene = data.get("scene", "wide forest at dusk, fireflies, rich readable background")
     negative = data.get(
         "negative_prompt",
-        "worst quality, low quality, lowres, blurry, jpeg artifacts, text, watermark, signature, "
-        "deformed face, ugly, bad anatomy, extra limbs, malformed hands, duplicate, cropped, "
-        "close-up, centered portrait, oversaturated, anime, nsfw",
+        "worst quality, low quality, lowres, blurry, jpeg artifacts, text, watermark, "
+        "3d render, CGI, Pixar, Disney 3D, realistic photo, photorealistic, "
+        "CLOSE-UP, PORTRAIT, face focus, head shot, centered subject, cropped, zoomed in, "
+        "deformed face, ugly, bad anatomy, extra limbs, malformed hands, duplicate, "
+        "oversaturated, anime, manga, nsfw",
     )
     seed = int(data.get("seed", 42))
-    # Plus de steps = meilleure qualité (35-50 pour SDXL)
-    steps = int(data.get("steps", 45))
-    # guidance_scale optimal pour FaceID Plus: 6-8
-    guidance_scale = float(data.get("guidance_scale", 7.0))
+    # Réduction steps pour éviter sur-détail et permettre plus de variation
+    steps = int(data.get("steps", 35))
+    # guidance_scale BAS pour respecter la scène et la composition
+    guidance_scale = float(data.get("guidance_scale", 5.0))
     width = int(data.get("width", 1024))
     height = int(data.get("height", 768))
     s3_put = data.get("s3_presigned_put")
@@ -211,8 +213,8 @@ def handler(event):
     if isinstance(reference_face_b64, str):
         reference_face_b64 = reference_face_b64.strip()
 
-    # FaceID Plus v2 fonctionne mieux avec un poids dans [0.7-1.5]
-    ip_weight = float(data.get("ip_weight", 1.2))
+    # FaceID Plus v2: poids RÉDUIT (0.4-0.7) pour ne pas écraser la composition de scène
+    ip_weight = float(data.get("ip_weight", 0.5))
     ip_weight = max(0.0, min(2.0, ip_weight))
     use_refiner = bool(data.get("use_refiner", False))
     refiner_fraction = float(data.get("refiner_fraction", data.get("refiner_strength", 0.3)))
@@ -222,20 +224,20 @@ def handler(event):
     job_id = data.get("job_id", f"job_{int(time.time())}")
 
     comp_txt = (
-        "rule of thirds composition, medium-wide shot, character positioned on left or right third,"
-        " full body or 3/4 body visible, not centered, not close-up portrait,"
-        " detailed background with depth, readable scene elements"
+        "WIDE SHOT, FULL BODY, character small in scene, environmental storytelling,"
+        " rule of thirds, character on side, NOT centered, NOT close-up, NOT portrait,"
+        " detailed rich background, depth, scenic landscape composition, establishing shot"
     )
     style = (
-        "children's book illustration, digital painting, soft watercolor style,"
-        " gentle outlines, smooth shading, warm pastel colors, storybook art,"
-        " professional children's illustration, high quality, detailed"
+        "children's book illustration, 2D painted style, soft watercolor and gouache,"
+        " gentle brush strokes, hand-painted look, NOT 3D, NOT CGI, NOT Pixar,"
+        " storybook art, picture book illustration, warm colors, artistic painting"
     )
-    # Renforcer la description du personnage si FaceID est utilisé
+    # Description personnage MINIME pour ne pas écraser la scène
     char_desc = ""
     if reference_face_b64:
-        # FaceIDPlus v2: renforcer ressemblance avec description faciale précise
-        char_desc = " consistent character, recognizable face, clear facial features, expressive eyes, character identity preserved,"
+        # FaceIDPlus v2: description très légère, la scène doit dominer
+        char_desc = " recognizable character,"
     
     final_prompt = f"{prompt}{char_desc}, {scene}, {comp_txt}, {style}"
 
