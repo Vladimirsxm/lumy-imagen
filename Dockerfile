@@ -1,5 +1,5 @@
 # --- bust cache si besoin ---
-    ARG BUILD_NO=9
+    ARG BUILD_NO=10
 
     # Image PyTorch avec CUDA 11.8 (meilleure compatibilité GPU)
     FROM pytorch/pytorch:2.1.0-cuda11.8-cudnn8-runtime
@@ -66,11 +66,12 @@ except Exception as e:
     traceback.print_exc()
 PY
     
-    # 6) IP-Adapter (FaceID Plus XL) — via ZIP (pas de git)
-    RUN pip install --no-cache-dir ip-adapter
-    
-    # Sanity-check léger: vérifie juste que ip_adapter est installé
-    RUN python -c "import ip_adapter; print('ip_adapter OK')"
+# 6) IP-Adapter FaceID depuis GitHub (contient IPAdapterFaceIDPlus pour v2)
+RUN pip install --no-cache-dir timm
+RUN pip install --no-cache-dir "git+https://github.com/tencent-ailab/IP-Adapter.git"
+
+# Sanity-check: vérifie que ip_adapter est installé
+RUN python -c "import ip_adapter; print('ip_adapter OK')"
     
     # Caches persistants
     RUN mkdir -p $HF_HOME $TRANSFORMERS_CACHE $INSIGHTFACE_HOME && chmod -R 777 $HF_HOME $INSIGHTFACE_HOME

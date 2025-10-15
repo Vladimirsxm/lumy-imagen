@@ -193,8 +193,8 @@ def handler(event):
         "worst quality, lowres, jpeg artifacts, text, watermark, deformed, extra limbs, close-up, centered, portrait, nsfw",
     )
     seed = int(data.get("seed", 42))
-    steps = int(data.get("steps", 35))
-    guidance_scale = float(data.get("guidance_scale", 7.0))
+    steps = int(data.get("steps", 40))
+    guidance_scale = float(data.get("guidance_scale", 7.5))
     width = int(data.get("width", 1024))
     height = int(data.get("height", 768))
     s3_put = data.get("s3_presigned_put")
@@ -207,8 +207,8 @@ def handler(event):
     if isinstance(reference_face_b64, str):
         reference_face_b64 = reference_face_b64.strip()
 
-    # FaceIDPlus v2 fonctionne mieux avec un poids plus élevé (0.7-1.3)
-    ip_weight = float(data.get("ip_weight", 1.2))
+    # FaceID SDXL de base fonctionne mieux avec un poids élevé (1.2-1.5) et GPU InsightFace
+    ip_weight = float(data.get("ip_weight", 1.3))
     ip_weight = max(0.0, min(2.0, ip_weight))
     use_refiner = bool(data.get("use_refiner", False))
     refiner_fraction = float(data.get("refiner_fraction", data.get("refiner_strength", 0.3)))
@@ -274,23 +274,34 @@ def handler(event):
                 from huggingface_hub import hf_hub_download
                 
                 ip_ckpt_repo = "h94/IP-Adapter-FaceID"
-                # Utiliser FaceIDPlus v2 pour SDXL - meilleure qualité et ressemblance
-                weight_name = os.getenv("IPADAPTER_WEIGHT", "ip-adapter-faceid-plusv2_sdxl.bin")
+                # Choisir le modèle selon la classe disponible
+                # IPAdapterFaceIDPlusXL/Plus supportent v2 (meilleure ressemblance)
+                # IPAdapterFaceID supporte seulement le modèle de base
+                if _ipadapter_class_name in ["IPAdapterFaceIDPlusXL", "IPAdapterFaceIDPlus"]:
+                    weight_name = os.getenv("IPADAPTER_WEIGHT", "ip-adapter-faceid-plusv2_sdxl.bin")
+                    debug["using_plus_v2"] = True
+                else:
+                    weight_name = os.getenv("IPADAPTER_WEIGHT", "ip-adapter-faceid_sdxl.bin")
+                    debug["using_base"] = True
                 
                 try:
                     # Télécharger le poids depuis HF
                     ip_ckpt_path = hf_hub_download(repo_id=ip_ckpt_repo, filename=weight_name)
                     debug["ipadapter_weight_downloaded"] = weight_name
                 except Exception as e_download:
-                    # Fallback sur le modèle de base si v2 échoue
-                    try:
-                        weight_name = "ip-adapter-faceid_sdxl.bin"
-                        ip_ckpt_path = hf_hub_download(repo_id=ip_ckpt_repo, filename=weight_name)
-                        debug["ipadapter_weight_downloaded"] = weight_name
-                        debug["ipadapter_fallback_to_base"] = True
-                    except Exception as e_download2:
-                        debug["ipadapter_download_error"] = f"{str(e_download)} | {str(e_download2)}"
-                        raise e_download2
+                    # Si v2 échoue, fallback sur base
+                    if "plusv2" in weight_name:
+                        try:
+                            weight_name = "ip-adapter-faceid_sdxl.bin"
+                            ip_ckpt_path = hf_hub_download(repo_id=ip_ckpt_repo, filename=weight_name)
+                            debug["ipadapter_weight_downloaded"] = weight_name
+                            debug["fallback_to_base"] = True
+                        except Exception as e2:
+                            debug["ipadapter_download_error"] = f"{str(e_download)} | {str(e2)}"
+                            raise e2
+                    else:
+                        debug["ipadapter_download_error"] = str(e_download)
+                        raise e_download
                 
                 # Patcher temporairement le pipeline pour l'initialisation de IPAdapterFaceID
                 try:
