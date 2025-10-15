@@ -207,8 +207,8 @@ def handler(event):
     if isinstance(reference_face_b64, str):
         reference_face_b64 = reference_face_b64.strip()
 
-        ip_weight = float(data.get("ip_weight", 1.0))
-        ip_weight = max(0.0, min(1.5, ip_weight))
+        ip_weight = float(data.get("ip_weight", 1.2))
+        ip_weight = max(0.0, min(2.0, ip_weight))
     use_refiner = bool(data.get("use_refiner", False))
     refiner_fraction = float(data.get("refiner_fraction", data.get("refiner_strength", 0.8)))
     out_format = data.get("format", "WEBP")
@@ -217,11 +217,13 @@ def handler(event):
     job_id = data.get("job_id", f"job_{int(time.time())}")
 
     comp_txt = (
-        "rule of thirds, medium-wide shot, subject on left or right third, full or 3/4 body,"
-        " not centered, not close-up, background detailed but readable"
+        "rule of thirds, medium-wide shot, character on left or right third, full or 3/4 body visible,"
+        " not centered, not close-up, background detailed but readable, depth of field"
     )
-    style = "children's book illustration, soft watercolor, gentle outlines, smooth shading, pastel colors"
-    final_prompt = f"{prompt}, {scene}, {comp_txt}, {style}"
+    style = "children's book illustration, soft watercolor painting, gentle outlines, smooth shading, warm pastel colors, storybook art"
+    # Si FaceID est utilisé, renforcer la description du personnage
+    char_emphasis = ", detailed character face, expressive features, consistent character design" if reference_face_b64 else ""
+    final_prompt = f"{prompt}{char_emphasis}, {scene}, {comp_txt}, {style}"
 
     init_pipeline()
     t0 = time.time()
@@ -263,8 +265,8 @@ def handler(event):
                 from huggingface_hub import hf_hub_download
                 
                 ip_ckpt_repo = "h94/IP-Adapter-FaceID"
-                # Utiliser plusv2 pour SDXL - meilleure qualité et ressemblance
-                weight_name = os.getenv("IPADAPTER_WEIGHT", "ip-adapter-faceid-plusv2_sdxl.bin")
+                # Utiliser le modèle de base pour compatibilité (plusv2 cause des erreurs CUDA sur certains GPU)
+                weight_name = os.getenv("IPADAPTER_WEIGHT", "ip-adapter-faceid_sdxl.bin")
                 
                 try:
                     # Télécharger le poids depuis HF
