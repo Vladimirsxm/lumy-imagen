@@ -533,6 +533,7 @@ def handler(event):
                 generator=gen,
             ).images[0]
 
+
     result = {
         "status": "ok",
         "job_id": job_id,
