@@ -282,19 +282,7 @@ def handler(event):
                 # Initialiser avec la signature correcte: (sd_pipe, ip_ckpt_path, device)
                 try:
                     IP_FACEID_ADAPTER = IPAdapterFaceClass(pipeline, ip_ckpt_path, "cuda")  # type: ignore
-                    
-                    # Patch encode_prompt pour SDXL (retourne 6 valeurs au lieu de 2)
-                    original_encode_prompt = IP_FACEID_ADAPTER.pipe.encode_prompt
-                    def patched_encode_prompt(*args, **kwargs):
-                        result = original_encode_prompt(*args, **kwargs)
-                        # SDXL retourne (prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds, ...)
-                        # IPAdapterFaceID attend seulement (prompt_embeds, negative_prompt_embeds)
-                        if isinstance(result, tuple) and len(result) > 2:
-                            return result[0], result[1]
-                        return result
-                    IP_FACEID_ADAPTER.pipe.encode_prompt = patched_encode_prompt
-                    
-                    debug["ipadapter_init_variant"] = "sd_pipe_local_path_cuda_patched"
+                    debug["ipadapter_init_variant"] = "sd_pipe_local_path_cuda"
                 except Exception as e_init:
                     debug["ipadapter_init_error"] = str(e_init)
                     raise e_init
@@ -359,9 +347,21 @@ def handler(event):
                 
                 FACE_EMBED_CACHE[cache_key] = faceid_embeds
 
+            # Patch temporaire de encode_prompt pour SDXL pendant l'appel generate
+            original_encode_prompt = IP_FACEID_ADAPTER.pipe.encode_prompt
+            def patched_encode_prompt(*args, **kwargs):
+                result = original_encode_prompt(*args, **kwargs)
+                # SDXL retourne 6 valeurs, IPAdapterFaceID attend 2
+                if isinstance(result, tuple) and len(result) > 2:
+                    return result[0], result[1]
+                return result
+            
             # Appel generate avec compatibilité multi-signatures
             result_img = None
             try:
+                # Appliquer le patch temporairement
+                IP_FACEID_ADAPTER.pipe.encode_prompt = patched_encode_prompt
+                
                 result_img = IP_FACEID_ADAPTER.generate(
                     prompt=final_prompt,
                     negative_prompt=negative,
@@ -400,6 +400,9 @@ def handler(event):
                         height=height,
                         generator=gen,
                     )
+            finally:
+                # Restaurer la méthode originale
+                IP_FACEID_ADAPTER.pipe.encode_prompt = original_encode_prompt
             
             # Extraire l'image du résultat (peut être PIL.Image, list, ou tuple)
             if isinstance(result_img, list):
