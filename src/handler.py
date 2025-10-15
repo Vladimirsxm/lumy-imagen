@@ -279,10 +279,29 @@ def handler(event):
                         debug["ipadapter_download_error"] = f"{str(e_download)} | {str(e_download2)}"
                         raise e_download2
                 
-                # Initialiser avec la signature correcte: (sd_pipe, ip_ckpt_path, device)
+                # Créer une copie du pipeline pour IP-Adapter pour éviter les conflits
                 try:
-                    IP_FACEID_ADAPTER = IPAdapterFaceClass(pipeline, ip_ckpt_path, "cuda")  # type: ignore
-                    debug["ipadapter_init_variant"] = "sd_pipe_local_path_cuda"
+                    # Créer un wrapper du pipeline qui patch encode_prompt
+                    import copy
+                    
+                    # Créer un adaptateur qui wrappe le pipeline
+                    class SDXLPipelineAdapter:
+                        def __init__(self, original_pipe):
+                            self._pipe = original_pipe
+                            
+                        def __getattr__(self, name):
+                            return getattr(self._pipe, name)
+                        
+                        def encode_prompt(self, *args, **kwargs):
+                            result = self._pipe.encode_prompt(*args, **kwargs)
+                            # SDXL retourne 6 valeurs, IPAdapterFaceID attend 2
+                            if isinstance(result, tuple) and len(result) > 2:
+                                return result[0], result[1]
+                            return result
+                    
+                    wrapped_pipeline = SDXLPipelineAdapter(pipeline)
+                    IP_FACEID_ADAPTER = IPAdapterFaceClass(wrapped_pipeline, ip_ckpt_path, "cuda")  # type: ignore
+                    debug["ipadapter_init_variant"] = "sd_pipe_wrapped"
                 except Exception as e_init:
                     debug["ipadapter_init_error"] = str(e_init)
                     raise e_init
@@ -347,21 +366,10 @@ def handler(event):
                 
                 FACE_EMBED_CACHE[cache_key] = faceid_embeds
 
-            # Patch temporaire de encode_prompt pour SDXL pendant l'appel generate
-            original_encode_prompt = IP_FACEID_ADAPTER.pipe.encode_prompt
-            def patched_encode_prompt(*args, **kwargs):
-                result = original_encode_prompt(*args, **kwargs)
-                # SDXL retourne 6 valeurs, IPAdapterFaceID attend 2
-                if isinstance(result, tuple) and len(result) > 2:
-                    return result[0], result[1]
-                return result
-            
             # Appel generate avec compatibilité multi-signatures
+            # Le patch encode_prompt est déjà dans le wrapper, pas besoin de patch temporaire
             result_img = None
             try:
-                # Appliquer le patch temporairement
-                IP_FACEID_ADAPTER.pipe.encode_prompt = patched_encode_prompt
-                
                 result_img = IP_FACEID_ADAPTER.generate(
                     prompt=final_prompt,
                     negative_prompt=negative,
@@ -400,9 +408,9 @@ def handler(event):
                         height=height,
                         generator=gen,
                     )
-            finally:
-                # Restaurer la méthode originale
-                IP_FACEID_ADAPTER.pipe.encode_prompt = original_encode_prompt
+            except Exception as e_generate:
+                debug["generate_all_failed"] = str(e_generate)
+                raise e_generate
             
             # Extraire l'image du résultat (peut être PIL.Image, list, ou tuple)
             if isinstance(result_img, list):
