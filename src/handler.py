@@ -300,36 +300,32 @@ def handler(event):
                     # Initialiser IP-Adapter avec le pipeline patché
                     IP_FACEID_ADAPTER = IPAdapterFaceClass(pipeline, ip_ckpt_path, "cuda")  # type: ignore
                     
-                    # Patcher check_inputs pour ignorer le manque de pooled_prompt_embeds
-                    original_check_inputs = pipeline.check_inputs
-                    def patched_check_inputs(*args, **kwargs):
-                        # Extraire prompt_embeds et pooled_prompt_embeds des kwargs
-                        prompt_embeds = kwargs.get('prompt_embeds')
-                        negative_prompt_embeds = kwargs.get('negative_prompt_embeds')
-                        pooled_prompt_embeds = kwargs.get('pooled_prompt_embeds')
-                        negative_pooled_prompt_embeds = kwargs.get('negative_pooled_prompt_embeds')
-                        
+                    # Patcher __call__ du pipeline pour injecter pooled_prompt_embeds avant check_inputs
+                    original_pipeline_call = pipeline.__call__
+                    def patched_pipeline_call(*args, **kwargs):
                         # Si prompt_embeds fourni sans pooled, créer des zéros
-                        if prompt_embeds is not None and pooled_prompt_embeds is None:
+                        if 'prompt_embeds' in kwargs and 'pooled_prompt_embeds' not in kwargs:
+                            prompt_embeds = kwargs['prompt_embeds']
                             batch_size = prompt_embeds.shape[0]
                             pooled_shape = (batch_size, 1280)
                             kwargs['pooled_prompt_embeds'] = torch.zeros(pooled_shape, device=prompt_embeds.device, dtype=prompt_embeds.dtype)
-                        if negative_prompt_embeds is not None and negative_pooled_prompt_embeds is None:
+                        if 'negative_prompt_embeds' in kwargs and 'negative_pooled_prompt_embeds' not in kwargs:
+                            negative_prompt_embeds = kwargs['negative_prompt_embeds']
                             batch_size = negative_prompt_embeds.shape[0]
                             pooled_shape = (batch_size, 1280)
                             kwargs['negative_pooled_prompt_embeds'] = torch.zeros(pooled_shape, device=negative_prompt_embeds.device, dtype=negative_prompt_embeds.dtype)
                         
-                        # Appeler l'original avec tous les arguments
-                        return original_check_inputs(*args, **kwargs)
+                        # Appeler l'original avec les pooled_embeds ajoutés
+                        return original_pipeline_call(*args, **kwargs)
                     
-                    pipeline.check_inputs = patched_check_inputs
-                    IP_FACEID_ADAPTER._original_check_inputs = original_check_inputs
+                    pipeline.__call__ = patched_pipeline_call
+                    IP_FACEID_ADAPTER._original_pipeline_call = original_pipeline_call
                     
                     # NE PAS restaurer - garder le patch pour les appels generate
                     # On stocke l'original pour restauration manuelle si besoin
                     IP_FACEID_ADAPTER._original_encode_prompt = original_encode_prompt_method
                     
-                    debug["ipadapter_init_variant"] = "sd_pipe_patched_check_inputs"
+                    debug["ipadapter_init_variant"] = "sd_pipe_patched_call"
                 except Exception as e_init:
                     # Restaurer en cas d'erreur
                     pipeline.encode_prompt = original_encode_prompt_method
@@ -426,9 +422,9 @@ def handler(event):
             if hasattr(IP_FACEID_ADAPTER, '_original_encode_prompt'):
                 pipeline.encode_prompt = IP_FACEID_ADAPTER._original_encode_prompt
                 debug["encode_prompt_restored"] = True
-            if hasattr(IP_FACEID_ADAPTER, '_original_check_inputs'):
-                pipeline.check_inputs = IP_FACEID_ADAPTER._original_check_inputs
-                debug["check_inputs_restored"] = True
+            if hasattr(IP_FACEID_ADAPTER, '_original_pipeline_call'):
+                pipeline.__call__ = IP_FACEID_ADAPTER._original_pipeline_call
+                debug["pipeline_call_restored"] = True
         except Exception as e:
             import traceback
             print(f"[handler] FaceID fallback: {e}")
@@ -441,9 +437,9 @@ def handler(event):
             if IP_FACEID_ADAPTER is not None and hasattr(IP_FACEID_ADAPTER, '_original_encode_prompt'):
                 pipeline.encode_prompt = IP_FACEID_ADAPTER._original_encode_prompt
                 debug["encode_prompt_restored_after_error"] = True
-            if IP_FACEID_ADAPTER is not None and hasattr(IP_FACEID_ADAPTER, '_original_check_inputs'):
-                pipeline.check_inputs = IP_FACEID_ADAPTER._original_check_inputs
-                debug["check_inputs_restored_after_error"] = True
+            if IP_FACEID_ADAPTER is not None and hasattr(IP_FACEID_ADAPTER, '_original_pipeline_call'):
+                pipeline.__call__ = IP_FACEID_ADAPTER._original_pipeline_call
+                debug["pipeline_call_restored_after_error"] = True
 
     if image is None:
         if isinstance(pipeline, StableDiffusionXLPipeline):
