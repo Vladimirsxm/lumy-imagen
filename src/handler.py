@@ -300,20 +300,32 @@ def handler(event):
                     # Initialiser IP-Adapter avec le pipeline patché
                     IP_FACEID_ADAPTER = IPAdapterFaceClass(pipeline, ip_ckpt_path, "cuda")  # type: ignore
                     
-                    # Wrapper du pipeline qui injecte automatiquement les pooled_embeds
+                    # RESTAURER encode_prompt avant de créer le wrapper
+                    pipeline.encode_prompt = original_encode_prompt_method
+                    
+                    # Wrapper du pipeline qui gère l'incompatibilité encode_prompt ET pooled_embeds
                     class PipelineWrapper:
-                        def __init__(self, pipe):
+                        def __init__(self, pipe, original_encode):
                             self._pipe = pipe
+                            self._original_encode_prompt = original_encode
                             # Copier tous les attributs du pipeline
                             for attr in dir(pipe):
-                                if not attr.startswith('_') and attr != '__call__':
+                                if not attr.startswith('_') and attr not in ['__call__', 'encode_prompt']:
                                     try:
                                         setattr(self, attr, getattr(pipe, attr))
                                     except:
                                         pass
                         
+                        def encode_prompt(self, *args, **kwargs):
+                            # Appeler la vraie méthode qui retourne 6 valeurs pour SDXL
+                            result = self._original_encode_prompt(*args, **kwargs)
+                            # IPAdapterFaceID attend 2 valeurs lors de l'unpack
+                            if isinstance(result, tuple) and len(result) > 2:
+                                return result[0], result[1]
+                            return result
+                        
                         def __call__(self, *args, **kwargs):
-                            # Injecter pooled_embeds si manquants
+                            # Injecter pooled_embeds si manquants (quand IPAdapterFaceID appelle le pipeline)
                             if 'prompt_embeds' in kwargs and 'pooled_prompt_embeds' not in kwargs:
                                 prompt_embeds = kwargs['prompt_embeds']
                                 batch_size = prompt_embeds.shape[0]
@@ -331,7 +343,7 @@ def handler(event):
                     
                     # Remplacer self.pipe de IP_FACEID_ADAPTER par le wrapper
                     IP_FACEID_ADAPTER._original_pipe = IP_FACEID_ADAPTER.pipe
-                    IP_FACEID_ADAPTER.pipe = PipelineWrapper(pipeline)
+                    IP_FACEID_ADAPTER.pipe = PipelineWrapper(pipeline, original_encode_prompt_method)
                     
                     # NE PAS restaurer - garder le patch pour les appels generate
                     # On stocke l'original pour restauration manuelle si besoin
