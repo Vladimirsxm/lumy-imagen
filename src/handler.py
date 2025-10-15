@@ -85,14 +85,14 @@ def init_pipeline() -> None:
         return
 
     model_id = os.getenv("MODEL_ID", "stabilityai/stable-diffusion-xl-base-1.0")
-        CURRENT_MODEL_ID = model_id
+    CURRENT_MODEL_ID = model_id
 
-        if "xl" in model_id.lower():
+    if "xl" in model_id.lower():
         pipeline_local = StableDiffusionXLPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
-            CURRENT_PIPELINE_KIND = "sdxl"
-        else:
+        CURRENT_PIPELINE_KIND = "sdxl"
+    else:
         pipeline_local = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
-            CURRENT_PIPELINE_KIND = "sd"
+        CURRENT_PIPELINE_KIND = "sd"
 
     # VAE optimisé
     try:
@@ -119,7 +119,7 @@ def init_pipeline() -> None:
 
     pipeline_local.set_progress_bar_config(disable=True)
     pipeline = pipeline_local
-        print(f"[handler] Loaded model: {CURRENT_MODEL_ID} (pipeline={CURRENT_PIPELINE_KIND})")
+    print(f"[handler] Loaded model: {CURRENT_MODEL_ID} (pipeline={CURRENT_PIPELINE_KIND})")
 
 
 def init_refiner_if_needed() -> None:
@@ -515,15 +515,15 @@ def handler(event):
                         generator=gen,
                     ).images[0]
             else:
-            image = pipeline(
-                prompt=final_prompt,
-                negative_prompt=negative,
-                num_inference_steps=steps,
-                guidance_scale=guidance_scale,
+                image = pipeline(
+                    prompt=final_prompt,
+                    negative_prompt=negative,
+                    num_inference_steps=steps,
+                    guidance_scale=guidance_scale,
                     width=width,
                     height=height,
                     generator=gen,
-            ).images[0]
+                ).images[0]
         else:
             image = pipeline(
                 prompt=final_prompt,
