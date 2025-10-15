@@ -190,11 +190,15 @@ def handler(event):
     scene = data.get("scene", "wide forest at dusk, fireflies, rich readable background")
     negative = data.get(
         "negative_prompt",
-        "worst quality, lowres, jpeg artifacts, text, watermark, deformed, extra limbs, close-up, centered, portrait, nsfw",
+        "worst quality, low quality, lowres, blurry, jpeg artifacts, text, watermark, signature, "
+        "deformed face, ugly, bad anatomy, extra limbs, malformed hands, duplicate, cropped, "
+        "close-up, centered portrait, oversaturated, anime, nsfw",
     )
     seed = int(data.get("seed", 42))
-    steps = int(data.get("steps", 40))
-    guidance_scale = float(data.get("guidance_scale", 7.5))
+    # Plus de steps = meilleure qualité (35-50 pour SDXL)
+    steps = int(data.get("steps", 45))
+    # guidance_scale optimal pour FaceID Plus: 6-8
+    guidance_scale = float(data.get("guidance_scale", 7.0))
     width = int(data.get("width", 1024))
     height = int(data.get("height", 768))
     s3_put = data.get("s3_presigned_put")
@@ -207,8 +211,8 @@ def handler(event):
     if isinstance(reference_face_b64, str):
         reference_face_b64 = reference_face_b64.strip()
 
-    # FaceID SDXL de base fonctionne mieux avec un poids élevé (1.2-1.5) et GPU InsightFace
-    ip_weight = float(data.get("ip_weight", 1.3))
+    # FaceID Plus v2 fonctionne mieux avec un poids dans [0.7-1.5]
+    ip_weight = float(data.get("ip_weight", 1.2))
     ip_weight = max(0.0, min(2.0, ip_weight))
     use_refiner = bool(data.get("use_refiner", False))
     refiner_fraction = float(data.get("refiner_fraction", data.get("refiner_strength", 0.3)))
@@ -230,7 +234,8 @@ def handler(event):
     # Renforcer la description du personnage si FaceID est utilisé
     char_desc = ""
     if reference_face_b64:
-        char_desc = " consistent character design, detailed facial features, expressive face, same character,"
+        # FaceIDPlus v2: renforcer ressemblance avec description faciale précise
+        char_desc = " consistent character, recognizable face, clear facial features, expressive eyes, character identity preserved,"
     
     final_prompt = f"{prompt}{char_desc}, {scene}, {comp_txt}, {style}"
 
