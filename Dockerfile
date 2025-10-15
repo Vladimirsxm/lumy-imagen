@@ -1,7 +1,8 @@
 # --- bust cache si besoin ---
-    ARG BUILD_NO=6
+    ARG BUILD_NO=7
 
-    FROM pytorch/pytorch:2.4.1-cuda12.1-cudnn9-runtime
+    # Utiliser l'image Runpod avec PyTorch pré-compilé pour leurs GPUs
+    FROM runpod/pytorch:2.1.0-py3.10-cuda12.1.1-devel-ubuntu22.04
     
     ENV DEBIAN_FRONTEND=noninteractive \
         PYTHONUNBUFFERED=1 \
@@ -27,9 +28,8 @@
     # 2) Diffusion stack
     RUN pip install diffusers==0.31.0 transformers==4.44.0 accelerate==0.33.0 safetensors==0.4.3
     
-    # 3) Torch CUDA 12.1 + ONNXRuntime CPU
-    RUN pip install --index-url https://download.pytorch.org/whl/cu121 torch==2.4.1 torchvision==0.19.1 torchaudio==2.4.1 \
-     && pip install onnx==1.16.0 onnxruntime==1.18.0
+    # 3) ONNXRuntime CPU (PyTorch déjà inclus dans l'image de base Runpod)
+    RUN pip install onnx==1.16.0 onnxruntime==1.18.0
     
     # 4) OpenCV + dépendances binaires
     RUN pip install --only-binary=:all: opencv-python-headless==4.9.0.80 scipy==1.11.4 scikit-image==0.22.0

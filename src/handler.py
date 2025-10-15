@@ -193,8 +193,8 @@ def handler(event):
         "worst quality, lowres, jpeg artifacts, text, watermark, deformed, extra limbs, close-up, centered, portrait, nsfw",
     )
     seed = int(data.get("seed", 42))
-    steps = int(data.get("steps", 30))
-    guidance_scale = float(data.get("guidance_scale", 5.5))
+    steps = int(data.get("steps", 35))
+    guidance_scale = float(data.get("guidance_scale", 7.0))
     width = int(data.get("width", 1024))
     height = int(data.get("height", 768))
     s3_put = data.get("s3_presigned_put")
@@ -207,21 +207,31 @@ def handler(event):
     if isinstance(reference_face_b64, str):
         reference_face_b64 = reference_face_b64.strip()
 
-    ip_weight = float(data.get("ip_weight", 0.8))
-    ip_weight = max(0.0, min(1.2, ip_weight))
+    ip_weight = float(data.get("ip_weight", 1.0))
+    ip_weight = max(0.0, min(1.5, ip_weight))
     use_refiner = bool(data.get("use_refiner", False))
-    refiner_fraction = float(data.get("refiner_fraction", data.get("refiner_strength", 0.8)))
+    refiner_fraction = float(data.get("refiner_fraction", data.get("refiner_strength", 0.3)))
     out_format = data.get("format", "WEBP")
     out_quality = int(data.get("quality", 90))
     return_base64 = bool(data.get("return_base64", True))
     job_id = data.get("job_id", f"job_{int(time.time())}")
 
     comp_txt = (
-        "rule of thirds, medium-wide shot, subject on left or right third, full or 3/4 body,"
-        " not centered, not close-up, background detailed but readable"
+        "rule of thirds composition, medium-wide shot, character positioned on left or right third,"
+        " full body or 3/4 body visible, not centered, not close-up portrait,"
+        " detailed background with depth, readable scene elements"
     )
-    style = "children's book illustration, soft watercolor, gentle outlines, smooth shading, pastel colors"
-    final_prompt = f"{prompt}, {scene}, {comp_txt}, {style}"
+    style = (
+        "children's book illustration, digital painting, soft watercolor style,"
+        " gentle outlines, smooth shading, warm pastel colors, storybook art,"
+        " professional children's illustration, high quality, detailed"
+    )
+    # Renforcer la description du personnage si FaceID est utilisé
+    char_desc = ""
+    if reference_face_b64:
+        char_desc = " consistent character design, detailed facial features, expressive face, same character,"
+    
+    final_prompt = f"{prompt}{char_desc}, {scene}, {comp_txt}, {style}"
 
     init_pipeline()
     t0 = time.time()
