@@ -281,29 +281,37 @@ def handler(event):
                 
                 # Créer une copie du pipeline pour IP-Adapter pour éviter les conflits
                 try:
-                    # Créer un wrapper du pipeline qui patch encode_prompt
-                    import copy
+                    # Monkey-patch encode_prompt du pipeline de manière isolée
+                    # On crée une fonction wrapper qui sera assignée comme méthode
+                    original_encode_prompt = pipeline.encode_prompt
                     
-                    # Créer un adaptateur qui wrappe le pipeline
-                    class SDXLPipelineAdapter:
-                        def __init__(self, original_pipe):
-                            self._pipe = original_pipe
-                            
-                        def __getattr__(self, name):
-                            return getattr(self._pipe, name)
-                        
-                        def encode_prompt(self, *args, **kwargs):
-                            result = self._pipe.encode_prompt(*args, **kwargs)
-                            # SDXL retourne 6 valeurs, IPAdapterFaceID attend 2
-                            if isinstance(result, tuple) and len(result) > 2:
-                                return result[0], result[1]
-                            return result
+                    def patched_encode_prompt_method(self, *args, **kwargs):
+                        result = original_encode_prompt(*args, **kwargs)
+                        # SDXL retourne 6 valeurs, IPAdapterFaceID attend 2
+                        if isinstance(result, tuple) and len(result) > 2:
+                            return result[0], result[1]
+                        return result
                     
-                    wrapped_pipeline = SDXLPipelineAdapter(pipeline)
+                    # Créer une copie shallow du pipeline pour IP-Adapter
+                    import types
+                    wrapped_pipeline = types.SimpleNamespace()
+                    # Copier tous les attributs du pipeline
+                    for attr in dir(pipeline):
+                        if not attr.startswith('_'):
+                            try:
+                                setattr(wrapped_pipeline, attr, getattr(pipeline, attr))
+                            except:
+                                pass
+                    
+                    # Remplacer encode_prompt par la version patchée
+                    wrapped_pipeline.encode_prompt = types.MethodType(patched_encode_prompt_method, pipeline)
+                    
                     IP_FACEID_ADAPTER = IPAdapterFaceClass(wrapped_pipeline, ip_ckpt_path, "cuda")  # type: ignore
-                    debug["ipadapter_init_variant"] = "sd_pipe_wrapped"
+                    debug["ipadapter_init_variant"] = "sd_pipe_wrapped_v2"
                 except Exception as e_init:
                     debug["ipadapter_init_error"] = str(e_init)
+                    import traceback
+                    debug["ipadapter_init_traceback"] = traceback.format_exc()
                     raise e_init
 
             cache_key = _hash_b64_image(ref_str)
