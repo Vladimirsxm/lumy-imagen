@@ -337,17 +337,24 @@ def handler(event):
                     
                     # Wrapper du pipeline qui gère l'incompatibilité encode_prompt ET pooled_embeds
                     class PipelineWrapper:
-                        def __init__(self, pipe):
+                        def __init__(self, pipe, is_plus_variant):
                             self._pipe = pipe
+                            self._is_plus = is_plus_variant
                             # Stocker la vraie méthode encode_prompt du pipeline
                             self._real_encode_prompt = pipe.encode_prompt
                         
                         def encode_prompt(self, *args, **kwargs):
                             # Appeler la vraie méthode encode_prompt du pipeline SDXL (retourne 6 valeurs)
                             result = self._real_encode_prompt(*args, **kwargs)
-                            # IPAdapterFaceID attend 2 valeurs lors de l'unpack
-                            if isinstance(result, tuple) and len(result) > 2:
-                                return result[0], result[1]
+                            # IPAdapterFaceIDPlus(XL) attend 4 valeurs (prompt_embeds, neg_embeds, pooled, neg_pooled)
+                            # IPAdapterFaceID base attend 2 valeurs (prompt_embeds, neg_embeds)
+                            if isinstance(result, tuple) and len(result) >= 4:
+                                if self._is_plus:
+                                    # Retourner les 4 premières valeurs pour Plus
+                                    return result[0], result[1], result[2], result[3]
+                                else:
+                                    # Retourner 2 valeurs pour base
+                                    return result[0], result[1]
                             return result
                         
                         def __call__(self, *args, **kwargs):
@@ -370,7 +377,8 @@ def handler(event):
                     
                     # Remplacer self.pipe de IP_FACEID_ADAPTER par le wrapper
                     IP_FACEID_ADAPTER._original_pipe = IP_FACEID_ADAPTER.pipe
-                    IP_FACEID_ADAPTER.pipe = PipelineWrapper(pipeline)
+                    is_plus = _ipadapter_class_name in ["IPAdapterFaceIDPlusXL", "IPAdapterFaceIDPlus"]
+                    IP_FACEID_ADAPTER.pipe = PipelineWrapper(pipeline, is_plus)
                     
                     # NE PAS restaurer - garder le patch pour les appels generate
                     # On stocke l'original pour restauration manuelle si besoin
