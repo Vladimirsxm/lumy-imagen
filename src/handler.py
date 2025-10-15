@@ -302,37 +302,25 @@ def handler(event):
                     
                     # Patcher check_inputs pour ignorer le manque de pooled_prompt_embeds
                     original_check_inputs = pipeline.check_inputs
-                    def patched_check_inputs(
-                        prompt=None,
-                        prompt_2=None,
-                        height=None,
-                        width=None,
-                        callback_steps=None,
-                        negative_prompt=None,
-                        negative_prompt_2=None,
-                        prompt_embeds=None,
-                        negative_prompt_embeds=None,
-                        pooled_prompt_embeds=None,
-                        negative_pooled_prompt_embeds=None,
-                        callback_on_step_end_tensor_inputs=None,
-                    ):
+                    def patched_check_inputs(*args, **kwargs):
+                        # Extraire prompt_embeds et pooled_prompt_embeds des kwargs
+                        prompt_embeds = kwargs.get('prompt_embeds')
+                        negative_prompt_embeds = kwargs.get('negative_prompt_embeds')
+                        pooled_prompt_embeds = kwargs.get('pooled_prompt_embeds')
+                        negative_pooled_prompt_embeds = kwargs.get('negative_pooled_prompt_embeds')
+                        
                         # Si prompt_embeds fourni sans pooled, créer des zéros
                         if prompt_embeds is not None and pooled_prompt_embeds is None:
                             batch_size = prompt_embeds.shape[0]
                             pooled_shape = (batch_size, 1280)
-                            pooled_prompt_embeds = torch.zeros(pooled_shape, device=prompt_embeds.device, dtype=prompt_embeds.dtype)
+                            kwargs['pooled_prompt_embeds'] = torch.zeros(pooled_shape, device=prompt_embeds.device, dtype=prompt_embeds.dtype)
                         if negative_prompt_embeds is not None and negative_pooled_prompt_embeds is None:
                             batch_size = negative_prompt_embeds.shape[0]
                             pooled_shape = (batch_size, 1280)
-                            negative_pooled_prompt_embeds = torch.zeros(pooled_shape, device=negative_prompt_embeds.device, dtype=negative_prompt_embeds.dtype)
-                        # Appeler l'original avec les pooled_embeds ajoutés
-                        return original_check_inputs(
-                            prompt, prompt_2, height, width, callback_steps,
-                            negative_prompt, negative_prompt_2,
-                            prompt_embeds, negative_prompt_embeds,
-                            pooled_prompt_embeds, negative_pooled_prompt_embeds,
-                            callback_on_step_end_tensor_inputs
-                        )
+                            kwargs['negative_pooled_prompt_embeds'] = torch.zeros(pooled_shape, device=negative_prompt_embeds.device, dtype=negative_prompt_embeds.dtype)
+                        
+                        # Appeler l'original avec tous les arguments
+                        return original_check_inputs(*args, **kwargs)
                     
                     pipeline.check_inputs = patched_check_inputs
                     IP_FACEID_ADAPTER._original_check_inputs = original_check_inputs
@@ -410,51 +398,19 @@ def handler(event):
                 
                 FACE_EMBED_CACHE[cache_key] = faceid_embeds
 
-            # Appel generate avec compatibilité multi-signatures
-            # Le patch encode_prompt est déjà dans le wrapper, pas besoin de patch temporaire
-            result_img = None
-            try:
-                result_img = IP_FACEID_ADAPTER.generate(
-                    prompt=final_prompt,
-                    negative_prompt=negative,
-                    faceid_embeds=faceid_embeds,
-                    num_samples=1,
-                    num_inference_steps=steps,
-                    guidance_scale=guidance_scale,
-                    width=width,
-                    height=height,
-                    scale=ip_weight,
-                    seed=seed,
-                )
-            except TypeError as e1:
-                debug["generate_attempt1_error"] = str(e1)
-                try:
-                    result_img = IP_FACEID_ADAPTER.generate(
-                        prompt=final_prompt,
-                        negative_prompt=negative,
-                        faceid_embeds=faceid_embeds,
-                        num_inference_steps=steps,
-                        guidance_scale=guidance_scale,
-                        width=width,
-                        height=height,
-                        ip_adapter_scale=ip_weight,
-                        generator=gen,
-                    )
-                except TypeError as e2:
-                    debug["generate_attempt2_error"] = str(e2)
-                    result_img = IP_FACEID_ADAPTER.generate(
-                        prompt=final_prompt,
-                        negative_prompt=negative,
-                        faceid_embeds=faceid_embeds,
-                        num_inference_steps=steps,
-                        guidance_scale=guidance_scale,
-                        width=width,
-                        height=height,
-                        generator=gen,
-                    )
-            except Exception as e_generate:
-                debug["generate_all_failed"] = str(e_generate)
-                raise e_generate
+            # Appel generate - IPAdapterFaceID pour SDXL utilise une signature simple
+            result_img = IP_FACEID_ADAPTER.generate(
+                prompt=final_prompt,
+                negative_prompt=negative,
+                faceid_embeds=faceid_embeds,
+                num_samples=1,
+                num_inference_steps=steps,
+                guidance_scale=guidance_scale,
+                width=width,
+                height=height,
+                scale=ip_weight,
+                seed=seed,
+            )
             
             # Extraire l'image du résultat (peut être PIL.Image, list, ou tuple)
             if isinstance(result_img, list):
