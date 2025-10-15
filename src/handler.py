@@ -457,19 +457,36 @@ def handler(event):
                 
                 FACE_EMBED_CACHE[cache_key] = faceid_embeds
 
-            # Appel generate - IPAdapterFaceID pour SDXL utilise une signature simple
-            result_img = IP_FACEID_ADAPTER.generate(
+            # Appel generate avec les bons paramètres selon la classe
+            # IPAdapterFaceIDPlus(XL) requiert face_image en plus de faceid_embeds
+            if _ipadapter_class_name in ["IPAdapterFaceIDPlusXL", "IPAdapterFaceIDPlus"]:
+                result_img = IP_FACEID_ADAPTER.generate(
+                    prompt=final_prompt,
+                    negative_prompt=negative,
+                    faceid_embeds=faceid_embeds,
+                    face_image=ref_img,  # Image PIL pour CLIP
+                    num_samples=1,
+                    num_inference_steps=steps,
+                    guidance_scale=guidance_scale,
+                    width=width,
+                    height=height,
+                    scale=ip_weight,
+                    seed=seed,
+                )
+            else:
+                # IPAdapterFaceID base n'a pas besoin de face_image
+                result_img = IP_FACEID_ADAPTER.generate(
                 prompt=final_prompt,
                 negative_prompt=negative,
                 faceid_embeds=faceid_embeds,
-                num_samples=1,
+                    num_samples=1,
                 num_inference_steps=steps,
                 guidance_scale=guidance_scale,
                 width=width,
                 height=height,
-                scale=ip_weight,
-                seed=seed,
-            )
+                    scale=ip_weight,
+                    seed=seed,
+                )
             
             # Extraire l'image du résultat (peut être PIL.Image, list, ou tuple)
             if isinstance(result_img, list):
