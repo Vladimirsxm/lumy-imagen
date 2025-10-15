@@ -279,36 +279,35 @@ def handler(event):
                         debug["ipadapter_download_error"] = f"{str(e_download)} | {str(e_download2)}"
                         raise e_download2
                 
-                # Créer une copie du pipeline pour IP-Adapter pour éviter les conflits
+                # Patcher temporairement le pipeline pour l'initialisation de IPAdapterFaceID
                 try:
-                    # Monkey-patch encode_prompt du pipeline de manière isolée
-                    # On crée une fonction wrapper qui sera assignée comme méthode
-                    original_encode_prompt = pipeline.encode_prompt
+                    # Sauvegarder la méthode originale
+                    original_encode_prompt = pipeline.encode_prompt.__func__
+                    original_encode_prompt_self = pipeline.encode_prompt
                     
-                    def patched_encode_prompt_method(self, *args, **kwargs):
-                        result = original_encode_prompt(*args, **kwargs)
+                    # Créer une version patchée
+                    def patched_encode_prompt(*args, **kwargs):
+                        result = original_encode_prompt_self(*args, **kwargs)
                         # SDXL retourne 6 valeurs, IPAdapterFaceID attend 2
                         if isinstance(result, tuple) and len(result) > 2:
                             return result[0], result[1]
                         return result
                     
-                    # Créer une copie shallow du pipeline pour IP-Adapter
+                    # Patcher temporairement
                     import types
-                    wrapped_pipeline = types.SimpleNamespace()
-                    # Copier tous les attributs du pipeline
-                    for attr in dir(pipeline):
-                        if not attr.startswith('_'):
-                            try:
-                                setattr(wrapped_pipeline, attr, getattr(pipeline, attr))
-                            except:
-                                pass
+                    pipeline.encode_prompt = types.MethodType(patched_encode_prompt, pipeline)
                     
-                    # Remplacer encode_prompt par la version patchée
-                    wrapped_pipeline.encode_prompt = types.MethodType(patched_encode_prompt_method, pipeline)
+                    # Initialiser IP-Adapter avec le pipeline patché
+                    IP_FACEID_ADAPTER = IPAdapterFaceClass(pipeline, ip_ckpt_path, "cuda")  # type: ignore
                     
-                    IP_FACEID_ADAPTER = IPAdapterFaceClass(wrapped_pipeline, ip_ckpt_path, "cuda")  # type: ignore
-                    debug["ipadapter_init_variant"] = "sd_pipe_wrapped_v2"
+                    # NE PAS restaurer - garder le patch pour les appels generate
+                    # On stocke l'original pour restauration manuelle si besoin
+                    IP_FACEID_ADAPTER._original_encode_prompt = original_encode_prompt_self
+                    
+                    debug["ipadapter_init_variant"] = "sd_pipe_patched_permanent"
                 except Exception as e_init:
+                    # Restaurer en cas d'erreur
+                    pipeline.encode_prompt = original_encode_prompt_self
                     debug["ipadapter_init_error"] = str(e_init)
                     import traceback
                     debug["ipadapter_init_traceback"] = traceback.format_exc()
@@ -429,6 +428,11 @@ def handler(event):
                 image = result_img
             
             used_faceid = True
+            
+            # Restaurer encode_prompt original pour le pipeline SDXL normal
+            if hasattr(IP_FACEID_ADAPTER, '_original_encode_prompt'):
+                pipeline.encode_prompt = IP_FACEID_ADAPTER._original_encode_prompt
+                debug["encode_prompt_restored"] = True
         except Exception as e:
             import traceback
             print(f"[handler] FaceID fallback: {e}")
@@ -436,6 +440,11 @@ def handler(event):
             image = None
             debug["faceid_error"] = str(e)
             debug["faceid_traceback"] = traceback.format_exc()
+            
+            # Restaurer encode_prompt même en cas d'erreur
+            if IP_FACEID_ADAPTER is not None and hasattr(IP_FACEID_ADAPTER, '_original_encode_prompt'):
+                pipeline.encode_prompt = IP_FACEID_ADAPTER._original_encode_prompt
+                debug["encode_prompt_restored_after_error"] = True
 
     if image is None:
         if isinstance(pipeline, StableDiffusionXLPipeline):
