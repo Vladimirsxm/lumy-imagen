@@ -282,7 +282,19 @@ def handler(event):
                 # Initialiser avec la signature correcte: (sd_pipe, ip_ckpt_path, device)
                 try:
                     IP_FACEID_ADAPTER = IPAdapterFaceClass(pipeline, ip_ckpt_path, "cuda")  # type: ignore
-                    debug["ipadapter_init_variant"] = "sd_pipe_local_path_cuda"
+                    
+                    # Patch encode_prompt pour SDXL (retourne 6 valeurs au lieu de 2)
+                    original_encode_prompt = IP_FACEID_ADAPTER.pipe.encode_prompt
+                    def patched_encode_prompt(*args, **kwargs):
+                        result = original_encode_prompt(*args, **kwargs)
+                        # SDXL retourne (prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds, ...)
+                        # IPAdapterFaceID attend seulement (prompt_embeds, negative_prompt_embeds)
+                        if isinstance(result, tuple) and len(result) > 2:
+                            return result[0], result[1]
+                        return result
+                    IP_FACEID_ADAPTER.pipe.encode_prompt = patched_encode_prompt
+                    
+                    debug["ipadapter_init_variant"] = "sd_pipe_local_path_cuda_patched"
                 except Exception as e_init:
                     debug["ipadapter_init_error"] = str(e_init)
                     raise e_init
