@@ -281,19 +281,19 @@ def handler(event):
                 
                 # Patcher temporairement le pipeline pour l'initialisation de IPAdapterFaceID
                 try:
-                    # Sauvegarder la méthode originale
-                    original_encode_prompt = pipeline.encode_prompt.__func__
-                    original_encode_prompt_self = pipeline.encode_prompt
+                    # Sauvegarder la méthode originale (bound method)
+                    original_encode_prompt_method = pipeline.encode_prompt
                     
-                    # Créer une version patchée
-                    def patched_encode_prompt(*args, **kwargs):
-                        result = original_encode_prompt_self(*args, **kwargs)
+                    # Créer une version patchée qui accepte self comme premier arg
+                    def patched_encode_prompt(self, *args, **kwargs):
+                        # Appeler la méthode originale (déjà bound au pipeline)
+                        result = original_encode_prompt_method(*args, **kwargs)
                         # SDXL retourne 6 valeurs, IPAdapterFaceID attend 2
                         if isinstance(result, tuple) and len(result) > 2:
                             return result[0], result[1]
                         return result
                     
-                    # Patcher temporairement
+                    # Patcher avec une nouvelle méthode bound
                     import types
                     pipeline.encode_prompt = types.MethodType(patched_encode_prompt, pipeline)
                     
@@ -302,12 +302,12 @@ def handler(event):
                     
                     # NE PAS restaurer - garder le patch pour les appels generate
                     # On stocke l'original pour restauration manuelle si besoin
-                    IP_FACEID_ADAPTER._original_encode_prompt = original_encode_prompt_self
+                    IP_FACEID_ADAPTER._original_encode_prompt = original_encode_prompt_method
                     
                     debug["ipadapter_init_variant"] = "sd_pipe_patched_permanent"
                 except Exception as e_init:
                     # Restaurer en cas d'erreur
-                    pipeline.encode_prompt = original_encode_prompt_self
+                    pipeline.encode_prompt = original_encode_prompt_method
                     debug["ipadapter_init_error"] = str(e_init)
                     import traceback
                     debug["ipadapter_init_traceback"] = traceback.format_exc()
