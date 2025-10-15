@@ -207,8 +207,8 @@ def handler(event):
     if isinstance(reference_face_b64, str):
         reference_face_b64 = reference_face_b64.strip()
 
-    ip_weight = float(data.get("ip_weight", 0.8))
-    ip_weight = max(0.0, min(1.2, ip_weight))
+    ip_weight = float(data.get("ip_weight", 1.2))
+    ip_weight = max(0.0, min(2.0, ip_weight))
     use_refiner = bool(data.get("use_refiner", False))
     refiner_fraction = float(data.get("refiner_fraction", data.get("refiner_strength", 0.8)))
     out_format = data.get("format", "WEBP")
@@ -419,18 +419,35 @@ def handler(event):
                 FACE_EMBED_CACHE[cache_key] = faceid_embeds
 
             # Appel generate - IPAdapterFaceID pour SDXL utilise une signature simple
-            result_img = IP_FACEID_ADAPTER.generate(
-                prompt=final_prompt,
-                negative_prompt=negative,
-                faceid_embeds=faceid_embeds,
-                num_samples=1,
-                num_inference_steps=steps,
-                guidance_scale=guidance_scale,
-                width=width,
-                height=height,
-                scale=ip_weight,
-                seed=seed,
-            )
+            # Essayer avec shortcut=True pour plus de fidélité au visage
+            try:
+                result_img = IP_FACEID_ADAPTER.generate(
+                    prompt=final_prompt,
+                    negative_prompt=negative,
+                    faceid_embeds=faceid_embeds,
+                    num_samples=1,
+                    num_inference_steps=steps,
+                    guidance_scale=guidance_scale,
+                    width=width,
+                    height=height,
+                    scale=ip_weight,
+                    shortcut=True,
+                    seed=seed,
+                )
+            except TypeError:
+                # Fallback si shortcut n'est pas supporté
+                result_img = IP_FACEID_ADAPTER.generate(
+                    prompt=final_prompt,
+                    negative_prompt=negative,
+                    faceid_embeds=faceid_embeds,
+                    num_samples=1,
+                    num_inference_steps=steps,
+                    guidance_scale=guidance_scale,
+                    width=width,
+                    height=height,
+                    scale=ip_weight,
+                    seed=seed,
+                )
             
             # Extraire l'image du résultat (peut être PIL.Image, list, ou tuple)
             if isinstance(result_img, list):
