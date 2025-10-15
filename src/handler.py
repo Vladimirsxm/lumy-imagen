@@ -315,20 +315,14 @@ def handler(event):
                     
                     # Wrapper du pipeline qui gère l'incompatibilité encode_prompt ET pooled_embeds
                     class PipelineWrapper:
-                        def __init__(self, pipe, original_encode):
+                        def __init__(self, pipe):
                             self._pipe = pipe
-                            self._original_encode_prompt = original_encode
-                            # Copier tous les attributs du pipeline
-                            for attr in dir(pipe):
-                                if not attr.startswith('_') and attr not in ['__call__', 'encode_prompt']:
-                                    try:
-                                        setattr(self, attr, getattr(pipe, attr))
-                                    except:
-                                        pass
+                            # Stocker la vraie méthode encode_prompt du pipeline
+                            self._real_encode_prompt = pipe.encode_prompt
                         
                         def encode_prompt(self, *args, **kwargs):
-                            # Appeler la vraie méthode qui retourne 6 valeurs pour SDXL
-                            result = self._original_encode_prompt(*args, **kwargs)
+                            # Appeler la vraie méthode encode_prompt du pipeline SDXL (retourne 6 valeurs)
+                            result = self._real_encode_prompt(*args, **kwargs)
                             # IPAdapterFaceID attend 2 valeurs lors de l'unpack
                             if isinstance(result, tuple) and len(result) > 2:
                                 return result[0], result[1]
@@ -349,11 +343,12 @@ def handler(event):
                             return self._pipe(*args, **kwargs)
                         
                         def __getattr__(self, name):
+                            # Déléguer tous les autres attributs au pipeline réel
                             return getattr(self._pipe, name)
                     
                     # Remplacer self.pipe de IP_FACEID_ADAPTER par le wrapper
                     IP_FACEID_ADAPTER._original_pipe = IP_FACEID_ADAPTER.pipe
-                    IP_FACEID_ADAPTER.pipe = PipelineWrapper(pipeline, original_encode_prompt_method)
+                    IP_FACEID_ADAPTER.pipe = PipelineWrapper(pipeline)
                     
                     # NE PAS restaurer - garder le patch pour les appels generate
                     # On stocke l'original pour restauration manuelle si besoin
