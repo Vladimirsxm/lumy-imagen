@@ -321,8 +321,16 @@ def handler(event):
                     import types
                     pipeline.encode_prompt = types.MethodType(patched_encode_prompt, pipeline)
                     
-                    # Initialiser IP-Adapter avec le pipeline patché
-                    IP_FACEID_ADAPTER = IPAdapterFaceClass(pipeline, ip_ckpt_path, "cuda")  # type: ignore
+                    # Initialiser IP-Adapter avec la bonne signature selon la classe
+                    # IPAdapterFaceIDPlus(XL) requiert: (pipe, image_encoder_path, ip_ckpt, device)
+                    # IPAdapterFaceID requiert: (pipe, ip_ckpt, device)
+                    if _ipadapter_class_name in ["IPAdapterFaceIDPlusXL", "IPAdapterFaceIDPlus"]:
+                        # Pour Plus, télécharger l'image encoder
+                        image_encoder_path = "laion/CLIP-ViT-H-14-laion2B-s32B-b79K"
+                        IP_FACEID_ADAPTER = IPAdapterFaceClass(pipeline, image_encoder_path, ip_ckpt_path, "cuda")  # type: ignore
+                        debug["image_encoder"] = image_encoder_path
+                    else:
+                        IP_FACEID_ADAPTER = IPAdapterFaceClass(pipeline, ip_ckpt_path, "cuda")  # type: ignore
                     
                     # RESTAURER encode_prompt avant de créer le wrapper
                     pipeline.encode_prompt = original_encode_prompt_method
