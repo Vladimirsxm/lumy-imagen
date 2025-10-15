@@ -288,15 +288,8 @@ def handler(event):
                     def patched_encode_prompt(self, *args, **kwargs):
                         # Appeler la méthode originale (déjà bound au pipeline)
                         result = original_encode_prompt_method(*args, **kwargs)
-                        # SDXL retourne 6 valeurs: (prompt_embeds, negative_prompt_embeds, 
-                        #                           pooled_prompt_embeds, negative_pooled_prompt_embeds, ...)
-                        # IPAdapterFaceID attend 2, mais le pipeline SDXL a besoin des pooled aussi
-                        # On retourne les 4 premières valeurs pour compatibilité
-                        if isinstance(result, tuple) and len(result) >= 4:
-                            # Retourner (prompt_embeds, negative_prompt_embeds) pour IPAdapterFaceID
-                            # mais stocker les pooled pour usage ultérieur si nécessaire
-                            return result[0], result[1]
-                        elif isinstance(result, tuple) and len(result) > 2:
+                        # SDXL retourne 6 valeurs, IPAdapterFaceID attend 2
+                        if isinstance(result, tuple) and len(result) > 2:
                             return result[0], result[1]
                         return result
                     
@@ -307,29 +300,48 @@ def handler(event):
                     # Initialiser IP-Adapter avec le pipeline patché
                     IP_FACEID_ADAPTER = IPAdapterFaceClass(pipeline, ip_ckpt_path, "cuda")  # type: ignore
                     
-                    # Patcher aussi __call__ du pipeline pour ajouter pooled_prompt_embeds si manquants
-                    original_pipeline_call = pipeline.__call__
-                    def patched_pipeline_call(*args, **kwargs):
-                        # Si prompt_embeds est fourni mais pas pooled_prompt_embeds, créer des zéros
-                        if 'prompt_embeds' in kwargs and 'pooled_prompt_embeds' not in kwargs:
-                            # Créer des pooled embeds vides de la bonne forme
-                            prompt_embeds = kwargs['prompt_embeds']
+                    # Patcher check_inputs pour ignorer le manque de pooled_prompt_embeds
+                    original_check_inputs = pipeline.check_inputs
+                    def patched_check_inputs(
+                        prompt=None,
+                        prompt_2=None,
+                        height=None,
+                        width=None,
+                        callback_steps=None,
+                        negative_prompt=None,
+                        negative_prompt_2=None,
+                        prompt_embeds=None,
+                        negative_prompt_embeds=None,
+                        pooled_prompt_embeds=None,
+                        negative_pooled_prompt_embeds=None,
+                        callback_on_step_end_tensor_inputs=None,
+                    ):
+                        # Si prompt_embeds fourni sans pooled, créer des zéros
+                        if prompt_embeds is not None and pooled_prompt_embeds is None:
                             batch_size = prompt_embeds.shape[0]
-                            # SDXL text_encoder_2 produit des embeddings de dimension 1280
                             pooled_shape = (batch_size, 1280)
-                            kwargs['pooled_prompt_embeds'] = torch.zeros(pooled_shape, device=prompt_embeds.device, dtype=prompt_embeds.dtype)
-                            if 'negative_prompt_embeds' in kwargs:
-                                kwargs['negative_pooled_prompt_embeds'] = torch.zeros(pooled_shape, device=prompt_embeds.device, dtype=prompt_embeds.dtype)
-                        return original_pipeline_call(*args, **kwargs)
+                            pooled_prompt_embeds = torch.zeros(pooled_shape, device=prompt_embeds.device, dtype=prompt_embeds.dtype)
+                        if negative_prompt_embeds is not None and negative_pooled_prompt_embeds is None:
+                            batch_size = negative_prompt_embeds.shape[0]
+                            pooled_shape = (batch_size, 1280)
+                            negative_pooled_prompt_embeds = torch.zeros(pooled_shape, device=negative_prompt_embeds.device, dtype=negative_prompt_embeds.dtype)
+                        # Appeler l'original avec les pooled_embeds ajoutés
+                        return original_check_inputs(
+                            prompt, prompt_2, height, width, callback_steps,
+                            negative_prompt, negative_prompt_2,
+                            prompt_embeds, negative_prompt_embeds,
+                            pooled_prompt_embeds, negative_pooled_prompt_embeds,
+                            callback_on_step_end_tensor_inputs
+                        )
                     
-                    pipeline.__call__ = patched_pipeline_call
-                    IP_FACEID_ADAPTER._original_pipeline_call = original_pipeline_call
+                    pipeline.check_inputs = patched_check_inputs
+                    IP_FACEID_ADAPTER._original_check_inputs = original_check_inputs
                     
                     # NE PAS restaurer - garder le patch pour les appels generate
                     # On stocke l'original pour restauration manuelle si besoin
                     IP_FACEID_ADAPTER._original_encode_prompt = original_encode_prompt_method
                     
-                    debug["ipadapter_init_variant"] = "sd_pipe_patched_with_pooled"
+                    debug["ipadapter_init_variant"] = "sd_pipe_patched_check_inputs"
                 except Exception as e_init:
                     # Restaurer en cas d'erreur
                     pipeline.encode_prompt = original_encode_prompt_method
@@ -454,13 +466,13 @@ def handler(event):
             
             used_faceid = True
             
-            # Restaurer encode_prompt et __call__ originaux pour le pipeline SDXL normal
+            # Restaurer les méthodes patchées pour le pipeline SDXL normal
             if hasattr(IP_FACEID_ADAPTER, '_original_encode_prompt'):
                 pipeline.encode_prompt = IP_FACEID_ADAPTER._original_encode_prompt
                 debug["encode_prompt_restored"] = True
-            if hasattr(IP_FACEID_ADAPTER, '_original_pipeline_call'):
-                pipeline.__call__ = IP_FACEID_ADAPTER._original_pipeline_call
-                debug["pipeline_call_restored"] = True
+            if hasattr(IP_FACEID_ADAPTER, '_original_check_inputs'):
+                pipeline.check_inputs = IP_FACEID_ADAPTER._original_check_inputs
+                debug["check_inputs_restored"] = True
         except Exception as e:
             import traceback
             print(f"[handler] FaceID fallback: {e}")
@@ -469,13 +481,13 @@ def handler(event):
             debug["faceid_error"] = str(e)
             debug["faceid_traceback"] = traceback.format_exc()
             
-            # Restaurer encode_prompt et __call__ même en cas d'erreur
+            # Restaurer les méthodes patchées même en cas d'erreur
             if IP_FACEID_ADAPTER is not None and hasattr(IP_FACEID_ADAPTER, '_original_encode_prompt'):
                 pipeline.encode_prompt = IP_FACEID_ADAPTER._original_encode_prompt
                 debug["encode_prompt_restored_after_error"] = True
-            if IP_FACEID_ADAPTER is not None and hasattr(IP_FACEID_ADAPTER, '_original_pipeline_call'):
-                pipeline.__call__ = IP_FACEID_ADAPTER._original_pipeline_call
-                debug["pipeline_call_restored_after_error"] = True
+            if IP_FACEID_ADAPTER is not None and hasattr(IP_FACEID_ADAPTER, '_original_check_inputs'):
+                pipeline.check_inputs = IP_FACEID_ADAPTER._original_check_inputs
+                debug["check_inputs_restored_after_error"] = True
 
     if image is None:
         if isinstance(pipeline, StableDiffusionXLPipeline):
