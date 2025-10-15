@@ -1,8 +1,8 @@
 # --- bust cache si besoin ---
-    ARG BUILD_NO=7
+    ARG BUILD_NO=8
 
-    # Utiliser l'image Runpod avec PyTorch pré-compilé pour leurs GPUs
-    FROM runpod/pytorch:2.1.0-py3.10-cuda12.1.1-devel-ubuntu22.04
+    # Image PyTorch avec CUDA 11.8 (meilleure compatibilité GPU)
+    FROM pytorch/pytorch:2.1.0-cuda11.8-cudnn8-runtime
     
     ENV DEBIAN_FRONTEND=noninteractive \
         PYTHONUNBUFFERED=1 \
