@@ -1,5 +1,5 @@
 # --- bust cache si besoin ---
-    ARG BUILD_NO=8
+    ARG BUILD_NO=9
 
     # Image PyTorch avec CUDA 11.8 (meilleure compatibilité GPU)
     FROM pytorch/pytorch:2.1.0-cuda11.8-cudnn8-runtime
@@ -28,8 +28,8 @@
     # 2) Diffusion stack
     RUN pip install diffusers==0.31.0 transformers==4.44.0 accelerate==0.33.0 safetensors==0.4.3
     
-    # 3) ONNXRuntime CPU (PyTorch déjà inclus dans l'image de base Runpod)
-    RUN pip install onnx==1.16.0 onnxruntime==1.18.0
+    # 3) ONNXRuntime GPU pour InsightFace (PyTorch déjà inclus dans l'image de base)
+    RUN pip install onnx==1.16.0 onnxruntime-gpu==1.18.0
     
     # 4) OpenCV + dépendances binaires
     RUN pip install --only-binary=:all: opencv-python-headless==4.9.0.80 scipy==1.11.4 scikit-image==0.22.0

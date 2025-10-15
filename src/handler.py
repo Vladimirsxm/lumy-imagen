@@ -85,14 +85,14 @@ def init_pipeline() -> None:
         return
 
     model_id = os.getenv("MODEL_ID", "stabilityai/stable-diffusion-xl-base-1.0")
-    CURRENT_MODEL_ID = model_id
+        CURRENT_MODEL_ID = model_id
 
-    if "xl" in model_id.lower():
+        if "xl" in model_id.lower():
         pipeline_local = StableDiffusionXLPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
-        CURRENT_PIPELINE_KIND = "sdxl"
-    else:
+            CURRENT_PIPELINE_KIND = "sdxl"
+        else:
         pipeline_local = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
-        CURRENT_PIPELINE_KIND = "sd"
+            CURRENT_PIPELINE_KIND = "sd"
 
     # VAE optimisé
     try:
@@ -119,7 +119,7 @@ def init_pipeline() -> None:
 
     pipeline_local.set_progress_bar_config(disable=True)
     pipeline = pipeline_local
-    print(f"[handler] Loaded model: {CURRENT_MODEL_ID} (pipeline={CURRENT_PIPELINE_KIND})")
+        print(f"[handler] Loaded model: {CURRENT_MODEL_ID} (pipeline={CURRENT_PIPELINE_KIND})")
 
 
 def init_refiner_if_needed() -> None:
@@ -162,7 +162,7 @@ def upload_presigned(png_bytes: bytes, presigned_put_url: str) -> str:
     r.raise_for_status()
     return presigned_put_url.split("?", 1)[0]
 
-
+ 
 def image_to_base64(img: Image.Image, fmt: str = "WEBP", quality: int = 90) -> tuple[str, str]:
     bio = io.BytesIO()
     fmt_up = fmt.upper()
@@ -207,8 +207,9 @@ def handler(event):
     if isinstance(reference_face_b64, str):
         reference_face_b64 = reference_face_b64.strip()
 
-    ip_weight = float(data.get("ip_weight", 1.0))
-    ip_weight = max(0.0, min(1.5, ip_weight))
+    # FaceIDPlus v2 fonctionne mieux avec un poids plus élevé (0.7-1.3)
+    ip_weight = float(data.get("ip_weight", 1.2))
+    ip_weight = max(0.0, min(2.0, ip_weight))
     use_refiner = bool(data.get("use_refiner", False))
     refiner_fraction = float(data.get("refiner_fraction", data.get("refiner_strength", 0.3)))
     out_format = data.get("format", "WEBP")
@@ -273,18 +274,20 @@ def handler(event):
                 from huggingface_hub import hf_hub_download
                 
                 ip_ckpt_repo = "h94/IP-Adapter-FaceID"
-                weight_name = os.getenv("IPADAPTER_WEIGHT", "ip-adapter-faceid_sdxl.bin")
+                # Utiliser FaceIDPlus v2 pour SDXL - meilleure qualité et ressemblance
+                weight_name = os.getenv("IPADAPTER_WEIGHT", "ip-adapter-faceid-plusv2_sdxl.bin")
                 
                 try:
                     # Télécharger le poids depuis HF
                     ip_ckpt_path = hf_hub_download(repo_id=ip_ckpt_repo, filename=weight_name)
                     debug["ipadapter_weight_downloaded"] = weight_name
                 except Exception as e_download:
-                    # Fallback sur un autre poids si le premier échoue
+                    # Fallback sur le modèle de base si v2 échoue
                     try:
-                        weight_name = "ip-adapter-faceid-plusv2_sdxl.bin"
+                        weight_name = "ip-adapter-faceid_sdxl.bin"
                         ip_ckpt_path = hf_hub_download(repo_id=ip_ckpt_repo, filename=weight_name)
                         debug["ipadapter_weight_downloaded"] = weight_name
+                        debug["ipadapter_fallback_to_base"] = True
                     except Exception as e_download2:
                         debug["ipadapter_download_error"] = f"{str(e_download)} | {str(e_download2)}"
                         raise e_download2
@@ -371,10 +374,8 @@ def handler(event):
                 from insightface.app import FaceAnalysis
                 import numpy as np
                 
-                # Forcer CPU provider uniquement pour éviter les problèmes CUDA
-                # et utiliser le modèle pré-téléchargé
+                # Utiliser GPU pour InsightFace (meilleure qualité et rapidité)
                 app = None
-                # InsightFace ignore INSIGHTFACE_HOME, on force /opt/insightface
                 insightface_home = "/opt/insightface"
                 debug["insightface_home"] = insightface_home
                 
@@ -386,17 +387,31 @@ def handler(event):
                         continue
                     
                     try:
-                        # Utiliser allowed_modules=None pour charger depuis le chemin local
-                        app = FaceAnalysis(
-                            name=model_name,
-                            root=insightface_home,
-                            providers=['CPUExecutionProvider'],
-                            allowed_modules=['detection', 'recognition']
-                        )
-                        # ctx_id=-1 pour CPU
-                        app.prepare(ctx_id=-1, det_size=(640, 640))
-                        debug["insightface_model"] = model_name
-                        debug["insightface_provider"] = "CPU"
+                        # Essayer GPU d'abord, fallback sur CPU si erreur
+                        try:
+                            app = FaceAnalysis(
+                                name=model_name,
+                                root=insightface_home,
+                                providers=['CUDAExecutionProvider', 'CPUExecutionProvider'],
+                                allowed_modules=['detection', 'recognition']
+                            )
+                            # ctx_id=0 pour GPU
+                            app.prepare(ctx_id=0, det_size=(640, 640))
+                            debug["insightface_model"] = model_name
+                            debug["insightface_provider"] = "GPU"
+                        except Exception as e_gpu:
+                            # Fallback sur CPU si GPU échoue
+                            debug[f"insightface_{model_name}_gpu_error"] = str(e_gpu)
+                            app = FaceAnalysis(
+                                name=model_name,
+                                root=insightface_home,
+                                providers=['CPUExecutionProvider'],
+                                allowed_modules=['detection', 'recognition']
+                            )
+                            # ctx_id=-1 pour CPU
+                            app.prepare(ctx_id=-1, det_size=(640, 640))
+                            debug["insightface_model"] = model_name
+                            debug["insightface_provider"] = "CPU"
                         break
                     except Exception as e_model:
                         debug[f"insightface_{model_name}_error"] = str(e_model)
@@ -447,13 +462,9 @@ def handler(event):
             
             used_faceid = True
             
-            # Restaurer les méthodes patchées pour le pipeline SDXL normal
-            if hasattr(IP_FACEID_ADAPTER, '_original_encode_prompt'):
-                pipeline.encode_prompt = IP_FACEID_ADAPTER._original_encode_prompt
-                debug["encode_prompt_restored"] = True
-            if hasattr(IP_FACEID_ADAPTER, '_original_pipe'):
-                IP_FACEID_ADAPTER.pipe = IP_FACEID_ADAPTER._original_pipe
-                debug["pipe_wrapper_restored"] = True
+            # NE PAS restaurer le wrapper - il doit rester actif pour toutes les générations FaceID
+            # IP_FACEID_ADAPTER est global et réutilisé entre les requêtes
+            debug["pipe_wrapper_kept_active"] = True
         except Exception as e:
             import traceback
             print(f"[handler] FaceID fallback: {e}")
@@ -462,13 +473,9 @@ def handler(event):
             debug["faceid_error"] = str(e)
             debug["faceid_traceback"] = traceback.format_exc()
             
-            # Restaurer les méthodes patchées même en cas d'erreur
-            if IP_FACEID_ADAPTER is not None and hasattr(IP_FACEID_ADAPTER, '_original_encode_prompt'):
-                pipeline.encode_prompt = IP_FACEID_ADAPTER._original_encode_prompt
-                debug["encode_prompt_restored_after_error"] = True
-            if IP_FACEID_ADAPTER is not None and hasattr(IP_FACEID_ADAPTER, '_original_pipe'):
-                IP_FACEID_ADAPTER.pipe = IP_FACEID_ADAPTER._original_pipe
-                debug["pipe_wrapper_restored_after_error"] = True
+            # NE PAS restaurer le wrapper même en cas d'erreur
+            # Il doit rester actif pour les prochaines tentatives
+            debug["pipe_wrapper_kept_after_error"] = True
 
     if image is None:
         if isinstance(pipeline, StableDiffusionXLPipeline):
@@ -508,15 +515,15 @@ def handler(event):
                         generator=gen,
                     ).images[0]
             else:
-                image = pipeline(
-                    prompt=final_prompt,
-                    negative_prompt=negative,
-                    num_inference_steps=steps,
-                    guidance_scale=guidance_scale,
+            image = pipeline(
+                prompt=final_prompt,
+                negative_prompt=negative,
+                num_inference_steps=steps,
+                guidance_scale=guidance_scale,
                     width=width,
                     height=height,
                     generator=gen,
-                ).images[0]
+            ).images[0]
         else:
             image = pipeline(
                 prompt=final_prompt,
